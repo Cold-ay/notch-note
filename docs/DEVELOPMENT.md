@@ -341,7 +341,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter Com
 
 Swift package／module 名稱為 NotchAgenda，source 為 `Sources/NotchAgenda`，tests 為 `Tests/NotchAgendaTests`。`scripts/run-mac.sh` 建立 App Info.plist，管理目前版本與 QA bundle。
 
-iOS／iPadOS 建置、測試、封存與 TestFlight 發佈步驟見 [IOS_RELEASE.md](IOS_RELEASE.md)。`project.yml` 定義 App、Widget、共用單元測試與 iOS 介面測試。`scripts/build-ios.sh` 產生專案並呼叫 Xcode；生成的 xcodeproj 不提交，Config、Resources 與 project.yml 才是來源。
+iOS／iPadOS 建置與測試命令見 README。`project.yml` 定義 App、Widget、共用單元測試與 iOS 介面測試。`scripts/build-ios.sh` 產生專案並呼叫 Xcode；生成的 xcodeproj 不提交，Config、Resources 與 project.yml 才是來源。
 
 `TaskStore.widgetOccurrences(on:)` 共用日／週／月／待完成的當期查詢，Widget 不自行用 completed 布林過濾重複事項。Widget 為唯讀，App 使用原子寫入並要求重載 timeline；系統決定實際更新時機。iOS App、Widget 共用 group.com.colday.notchagenda 的 JSON，未加入網路同步。AppIcon 與 PrivacyInfo.xcprivacy 位於 Resources。
 

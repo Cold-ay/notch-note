@@ -58,7 +58,7 @@ QA App 使用不同 bundle identifier，資料存於 `.build/qa/`，不使用正
 
 ## iPhone / iPad 建置
 
-完整流程見 [iOS 發佈指南](docs/IOS_RELEASE.md)。安裝 Xcode、iOS Simulator runtime 與 XcodeGen（`brew install xcodegen`），再執行：
+安裝 Xcode、iOS Simulator runtime 與 XcodeGen（`brew install xcodegen`），再執行：
 
 ```sh
 ./scripts/build-ios.sh --simulator        # 模擬器 App 與 ZIP

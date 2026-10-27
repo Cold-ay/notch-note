@@ -1,5 +1,49 @@
+# Build products and generated projects
 .build/
 .swiftpm/
 DerivedData/
 *.xcodeproj/
+*.xcworkspace/
+*.xcarchive/
+*.xcresult/
+*.ipa
+*.dSYM/
+*.dSYM.zip
+*.log
+
+# Local Xcode / editor / agent state
+xcuserdata/
+*.xcuserstate
+.vscode/
+.idea/
+.codex/
+.agents/
+.claude/
 .DS_Store
+
+# Local environment and signing material
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local.xcconfig
+*.p8
+*.p12
+*.pfx
+*.key
+*.pem
+*.cer
+*.mobileprovision
+*.provisionprofile
+*.certSigningRequest
+ExportOptions.plist
+
+# User task/journal data and local backups
+tasks.json
+journal.json
+preferences.json
+/backups/
+
+# Local release instructions and machine-specific test reports
+/docs/IOS_RELEASE.md
+/docs/TEST_REPORT.md

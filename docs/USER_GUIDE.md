@@ -224,7 +224,7 @@ App 保留原本五個橫向分頁，打開即可查看事項和輸入，不經�
 
 ## 11. 目前範圍
 
-支援 macOS 14+ 與 iOS/iPadOS 17+。iOS 透過 TestFlight／App Store 安裝的流程見 [iOS 發佈指南](IOS_RELEASE.md)；目前開發產物未簽署，不能直接安裝到一般 iPhone。未提供通知、Apple Calendar 整合、iCloud 同步、日記全文搜尋或永久清空垃圾桶。Mac 亦尚未包含發佈簽署與公證。
+支援 macOS 14+ 與 iOS/iPadOS 17+。iOS 目前開發產物未簽署，不能直接安裝到一般 iPhone。未提供通知、Apple Calendar 整合、iCloud 同步、日記全文搜尋或永久清空垃圾桶。Mac 亦尚未包含發佈簽署與公證。
 
 
 ## iPhone / iPad 使用
