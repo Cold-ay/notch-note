@@ -3,25 +3,6 @@ import AppKit
 import CoreText
 import SwiftUI
 
-enum Paper {
-    static let sheet = Color(red: 0.98, green: 0.96, blue: 0.91)
-    static let ink = Color(red: 0.25, green: 0.25, blue: 0.22)
-    static let faint = Color(red: 0.49, green: 0.47, blue: 0.41)
-    static let accent = Color(red: 0.58, green: 0.30, blue: 0.22)
-    static let line = Color(red: 0.76, green: 0.78, blue: 0.73)
-}
-
-private enum JournalPage: String, CaseIterable, Identifiable {
-    case day = "每日", week = "週目標", month = "月目標", anytime = "待完成", calendar = "日曆"
-    var id: String { rawValue }
-    var scope: TaskScope {
-        switch self { case .day, .calendar: .day; case .week: .week; case .month: .month; case .anytime: .anytime }
-    }
-    static func page(for scope: TaskScope) -> Self {
-        switch scope { case .day: .day; case .week: .week; case .month: .month; case .anytime: .anytime }
-    }
-}
-
 enum JournalContent: Hashable { case tasks, completed, diary }
 
 struct MacJournalView: View {
@@ -31,15 +12,18 @@ struct MacJournalView: View {
     @State private var input = ""
     @State private var page = Date()
     @State private var lastToday = Date()
-    @State private var section = JournalPage.day
+    @State private var section = NotebookPage.day
     @State private var draftScope = TaskScope.day
     @State private var plannedDate = Date()
     @State private var repetition = TaskRepeat.none
     @State private var choosingDate = false
     @State private var editing: TaskItem?
     @State private var showTrash = false
+    @State private var showSettings = false
     @State private var content = JournalContent.tasks
     @FocusState private var writing: Bool
+    private var prefs: AppPreferences { store.preferences }
+    private var paper: PaperPalette { prefs.appearance.palette }
     private var isToday: Bool { store.calendar.isDateInToday(page) }
     private var allEntries: [TaskOccurrence] {
         store.occurrences(on: page, scope: section.scope, carryOver: isToday && section != .calendar)
@@ -59,10 +43,10 @@ struct MacJournalView: View {
     private var inputCount: Int { input.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count }
     private var heading: String {
         switch section {
-        case .day, .calendar: isToday ? "留給今天的事" : page.formatted(.dateTime.month().day()) + " 的事項"
-        case .week: "這一週，想做到的事"
-        case .month: "這個月，慢慢靠近的目標"
-        case .anytime: "還沒定日子，也值得記下"
+        case .day, .calendar: isToday ? prefs.text("留給今天的事") : page.formatted(.dateTime.month().day().locale(prefs.locale)) + prefs.text(" 的事項")
+        case .week: prefs.text("這一週，想做到的事")
+        case .month: prefs.text("這個月，慢慢靠近的目標")
+        case .anytime: prefs.text("還沒定日子，也值得記下")
         }
     }
 
@@ -70,12 +54,12 @@ struct MacJournalView: View {
         VStack(spacing: 0) {
             header
             navigation
-            Picker("頁面內容", selection: $content) {
-                Text("待辦事項").tag(JournalContent.tasks)
-                Text("已完成（\(allEntries.filter(\.isCompleted).count)）").tag(JournalContent.completed)
-                if section != .anytime { Text("寫日記").tag(JournalContent.diary) }
+            Picker(prefs.text("頁面內容"), selection: $content) {
+                Text(prefs.text("待辦事項")).tag(JournalContent.tasks)
+                Text(prefs.format("已完成（%d）", allEntries.filter(\.isCompleted).count)).tag(JournalContent.completed)
+                if section != .anytime { Text(prefs.text("寫日記")).tag(JournalContent.diary) }
             }.pickerStyle(.segmented).padding(.horizontal, 24).padding(.vertical, 10)
-            Rectangle().fill(Paper.line.opacity(0.6)).frame(height: 1)
+            Rectangle().fill(paper.line.opacity(0.6)).frame(height: 1)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if section == .calendar {
@@ -86,11 +70,11 @@ struct MacJournalView: View {
                             .id(store.journal.key(on: page, scope: section.scope))
                             .padding(24)
                     } else {
-                        sectionHeading(content == .completed ? "這一頁，已完成的事" : heading, detail: "\(allEntries.filter(\.isCompleted).count) / \(allEntries.count)")
+                        sectionHeading(content == .completed ? prefs.text("這一頁，已完成的事") : heading, detail: "\(allEntries.filter(\.isCompleted).count) / \(allEntries.count)")
                         if entries.isEmpty {
                             VStack(alignment: .leading, spacing: 7) {
-                                Text(content == .completed ? "還沒有已完成事項。" : "這一頁的待辦已清空。").font(.system(size: 15, design: .serif))
-                                Text(content == .completed ? "完成事項會收在這裡；需要再做時，移回待辦即可。" : "寫下下一件事，或切到「已完成」查看成果。").font(.system(size: 11)).foregroundStyle(Paper.faint)
+                                Text(content == .completed ? prefs.text("還沒有已完成事項。") : prefs.text("這一頁的待辦已清空。")).font(.system(size: 15, design: .serif))
+                                Text(content == .completed ? prefs.text("完成事項會收在這裡；需要再做時，移回待辦即可。") : prefs.text("寫下下一件事，或切到「已完成」查看成果。")).font(.system(size: 11)).foregroundStyle(paper.faint)
                             }.padding(.leading, 38).padding(.trailing, 24).padding(.vertical, 18)
                         }
                         ForEach(entries) { entry in
@@ -102,20 +86,24 @@ struct MacJournalView: View {
             .background { RuledPaper().allowsHitTesting(false).accessibilityHidden(true) }
             if let error = store.errorMessage {
                 HStack(alignment: .top) {
-                    Text(error).font(.caption).textSelection(.enabled)
+                    Text(prefs.text(error)).font(.caption).textSelection(.enabled)
                     Spacer()
-                    Button("關閉") { store.errorMessage = nil }
-                }.padding(12).foregroundStyle(Color.red).background(Paper.sheet)
+                    Button(prefs.text("關閉")) { store.errorMessage = nil }
+                }.padding(12).foregroundStyle(Color.red).background(paper.sheet)
             }
             if content == .tasks { composer }
         }
-        .foregroundStyle(Paper.ink).background(Paper.sheet)
+        .foregroundStyle(paper.ink).background(paper.sheet)
         .clipShape(RoundedRectangle(cornerRadius: floating ? 20 : 0))
-        .overlay { if floating { RoundedRectangle(cornerRadius: 20).strokeBorder(Paper.line.opacity(0.65), lineWidth: 1).allowsHitTesting(false) } }
-        .tint(Paper.accent).preferredColorScheme(.light)
+        .overlay { if floating { RoundedRectangle(cornerRadius: 20).strokeBorder(paper.line.opacity(0.65), lineWidth: 1).allowsHitTesting(false) } }
+        .tint(paper.accent).preferredColorScheme(.light)
         .frame(minWidth: 400, minHeight: 520)
         .sheet(item: $editing) { task in TaskPlanEditor(task: task, store: store) }
         .sheet(isPresented: $showTrash) { TaskTrashView(store: store) }
+        .sheet(isPresented: $showSettings) { AppSettingsView(preferences: prefs, close: { showSettings = false }) }
+        .environment(\.locale, prefs.locale)
+        .environment(\.paperPalette, paper)
+        .environment(\.notebookPaper, prefs.paper)
         .onChange(of: section) { _, newSection in
             if newSection == .anytime && content == .diary { content = .tasks }
             draftScope = newSection.scope
@@ -134,20 +122,21 @@ struct MacJournalView: View {
 
     private var navigation: some View {
         HStack(spacing: 0) {
-            ForEach(JournalPage.allCases) { item in
+            ForEach(NotebookPage.allCases) { item in
                 Button { section = item } label: {
                     VStack(spacing: 9) {
                         HStack(spacing: 3) {
-                            Text(item.rawValue)
+                            Text(prefs.text(item.title))
                             if item == .anytime {
                                 let count = store.activeTasks.filter { $0.scope == .anytime && !$0.completed }.count
                                 if count > 0 { Text("\(count)").font(.system(size: 9, design: .monospaced)) }
                             }
                         }.font(.system(size: 11, weight: item == section ? .semibold : .regular))
-                        Rectangle().fill(item == section ? Paper.accent : .clear).frame(height: 2)
+                        Rectangle().fill(item == section ? paper.accent : .clear).frame(height: 2)
                     }.padding(.top, 10).frame(maxWidth: .infinity).contentShape(Rectangle())
-                }.buttonStyle(.plain).foregroundStyle(item == section ? Paper.accent : Paper.faint)
-                    .accessibilityIdentifier("journal.tab.\(item.id)").accessibilityAddTraits(item == section ? [.isSelected] : [])
+                }.buttonStyle(.plain).foregroundStyle(item == section ? paper.accent : paper.faint)
+                    .accessibilityIdentifier("journal.tab.\(item.id)")
+                    .accessibilityAddTraits(item == section ? [.isSelected] : [])
             }
         }.padding(.horizontal, 18)
     }
@@ -155,112 +144,116 @@ struct MacJournalView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 8) {
-                Image(systemName: "book.closed").font(.system(size: 12))
-                Text("NOTCHAGENDA / 日常手記").font(.system(size: 10, weight: .medium, design: .monospaced)).tracking(1.2)
+                Image(systemName: "book.closed").frame(width: 24, height: 24)
+                Text("NOTCHAGENDA").font(.system(size: 9, weight: .medium, design: .monospaced)).tracking(1)
                 Spacer()
+                Button { showSettings = true } label: { Image(systemName: "gearshape").frame(width: 24, height: 24) }
+                    .buttonStyle(.plain).help(prefs.text("設定")).accessibilityIdentifier("settings.open")
                 Button { showTrash = true } label: { Image(systemName: "trash").font(.system(size: 12)).frame(width: 26, height: 26) }
-                    .buttonStyle(.plain).help("垃圾桶 · \(store.deletedTasks.count) 件；可還原")
-                    .accessibilityLabel("垃圾桶，\(store.deletedTasks.count) 件已刪除事項")
+                    .buttonStyle(.plain).help(prefs.format("垃圾桶 · %d 件；可還原", store.deletedTasks.count))
+                    .accessibilityLabel(prefs.format("垃圾桶，%d 件已刪除事項", store.deletedTasks.count))
                 if floating {
-                    Capsule().fill(Paper.faint.opacity(0.3)).frame(width: 30, height: 3)
-                        .frame(width: 52, height: 22).overlay { JournalDragHandle() }.help("拖動面板")
+                    Capsule().fill(paper.coverMuted.opacity(0.3)).frame(width: 30, height: 3)
+                        .frame(width: 34, height: 22).overlay { JournalDragHandle() }.help(prefs.text("拖動面板"))
                 }
                 if let dismiss {
                     Button(action: dismiss) { Image(systemName: "xmark").font(.system(size: 11)).frame(width: 26, height: 26) }
-                        .buttonStyle(.plain).help("隱藏面板；從選單列重新打開").accessibilityLabel("隱藏浮動日記")
+                        .buttonStyle(.plain).help(prefs.text("隱藏面板；從選單列重新打開")).accessibilityLabel(prefs.text("隱藏浮動日記"))
                 }
-            }.foregroundStyle(Paper.faint)
+            }.foregroundStyle(paper.coverMuted)
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(headerTitle).font(.system(size: 27, weight: .regular, design: .serif))
-                    Text(headerDetail).font(.system(size: 10, design: .monospaced)).foregroundStyle(Paper.faint)
+                    Text(headerDetail).font(.system(size: 10, design: .monospaced)).foregroundStyle(paper.coverMuted)
                 }
                 Spacer(minLength: 4)
                 if section != .anytime {
                     HStack(spacing: 7) {
-                        Button { movePage(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 28) }.accessibilityLabel("上一頁日期")
-                        Button { choosingDate.toggle() } label: { Image(systemName: "calendar").frame(width: 22, height: 28) }.accessibilityLabel("選擇日期")
+                        Button { movePage(-1) } label: { Image(systemName: "chevron.left").frame(width: 22, height: 28) }.accessibilityLabel(prefs.text("上一頁日期"))
+                        Button { choosingDate.toggle() } label: { Image(systemName: "calendar").frame(width: 22, height: 28) }.accessibilityLabel(prefs.text("選擇日期"))
                             .popover(isPresented: $choosingDate) {
                                 VStack {
-                                    DatePicker("選擇日期", selection: $page, displayedComponents: .date).datePickerStyle(.graphical)
-                                    Button("回到今天") { page = Date(); choosingDate = false }
+                                    DatePicker(prefs.text("選擇日期"), selection: $page, displayedComponents: .date).datePickerStyle(.graphical)
+                                    Button(prefs.text("回到今天")) { page = Date(); choosingDate = false }
                                 }.padding(16).frame(width: 300)
                             }
-                        Button { movePage(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 28) }.accessibilityLabel("下一頁日期")
-                    }.buttonStyle(.plain).foregroundStyle(Paper.faint)
+                        Button { movePage(1) } label: { Image(systemName: "chevron.right").frame(width: 22, height: 28) }.accessibilityLabel(prefs.text("下一頁日期"))
+                    }.buttonStyle(.plain).foregroundStyle(paper.coverMuted)
                 }
             }
             HStack(spacing: 6) {
-                Circle().fill(Paper.accent).frame(width: 5, height: 5)
-                Text(section == .anytime ? "暫時沒有期限，仍然記在心上。" : "\(allEntries.filter { !$0.isCompleted }.count) 件待完成 · 劃過的事，留在這一頁。")
+                Circle().fill(paper.accent).frame(width: 5, height: 5)
+                Text(section == .anytime ? prefs.text("暫時沒有期限，仍然記在心上。") : prefs.format("%d 件待完成 · 劃過的事，留在這一頁。", allEntries.filter { !$0.isCompleted }.count))
                 Spacer(minLength: 0)
-                if !isToday && section != .anytime { Button("今天") { page = Date() }.buttonStyle(.plain).foregroundStyle(Paper.accent) }
-            }.font(.system(size: 10)).foregroundStyle(Paper.faint)
+                if !isToday && section != .anytime { Button(prefs.text("今天")) { page = Date() }.buttonStyle(.plain).foregroundStyle(paper.accent) }
+            }.font(.system(size: 10)).foregroundStyle(paper.coverMuted)
         }.padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 10)
+            .foregroundStyle(paper.coverInk).background(paper.cover)
+            .overlay { NotebookCoverTrim(appearance: prefs.appearance) }
     }
 
     private var headerTitle: String {
         switch section {
-        case .anytime: "有一天，會做到。"
-        case .month, .calendar: page.formatted(.dateTime.year().month(.wide))
-        case .week: "這一週的目標"
-        case .day: page.formatted(.dateTime.month(.wide).day())
+        case .anytime: prefs.text("有一天，會做到。")
+        case .month, .calendar: page.formatted(.dateTime.year().month(.wide).locale(prefs.locale))
+        case .week: prefs.text("這一週的目標")
+        case .day: page.formatted(.dateTime.month(.wide).day().locale(prefs.locale))
         }
     }
     private var headerDetail: String {
-        if section == .anytime { return "沒有期限 / 隨時安排日期" }
+        if section == .anytime { return prefs.text("沒有期限 / 隨時安排日期") }
         if section == .week {
             let period = store.interval(for: page, scope: .week)
             let end = store.calendar.date(byAdding: .day, value: -1, to: period.end)!
-            return period.start.formatted(.dateTime.month().day()) + " – " + end.formatted(.dateTime.month().day()) + " · 週一至週日"
+            return period.start.formatted(.dateTime.month().day().locale(prefs.locale)) + " – " + end.formatted(.dateTime.month().day().locale(prefs.locale)) + prefs.text(" · 週一至週日")
         }
-        return page.formatted(.dateTime.year().weekday(.wide))
+        return page.formatted(.dateTime.year().weekday(.wide).locale(prefs.locale))
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Label("寫下接下來的事", systemImage: "pencil.tip").font(.system(size: 11, weight: .medium))
+                Label(prefs.text("寫下接下來的事"), systemImage: "pencil.tip").font(.system(size: 11, weight: .medium))
                 Spacer()
-                Text("每行一件").font(.system(size: 10)).foregroundStyle(Paper.faint)
+                Text(prefs.text("每行一件")).font(.system(size: 10)).foregroundStyle(paper.faint)
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $input).font(.system(size: 14, design: .serif)).scrollContentBackground(.hidden)
                     .focused($writing).padding(.horizontal, 3).padding(.vertical, 5)
-                    .accessibilityLabel("寫下待辦，每行一件").accessibilityIdentifier("journal.input")
+                    .accessibilityLabel(prefs.text("寫下待辦，每行一件")).accessibilityIdentifier("journal.input")
                 if input.isEmpty {
-                    Text("讀十頁書，或每天練習 Duolingo…").font(.system(size: 13, design: .serif)).foregroundStyle(Paper.faint.opacity(0.65))
+                    Text(prefs.text("讀十頁書，或每天練習 Duolingo…")).font(.system(size: 13, design: .serif)).foregroundStyle(paper.faint.opacity(0.65))
                         .padding(.leading, 8).padding(.top, 8).allowsHitTesting(false).accessibilityHidden(true)
                 }
             }.frame(height: 56).background(.white.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-                .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(writing ? Paper.accent.opacity(0.6) : Paper.line.opacity(0.7), lineWidth: 1).allowsHitTesting(false) }
+                .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(writing ? paper.accent.opacity(0.6) : paper.line.opacity(0.7), lineWidth: 1).allowsHitTesting(false) }
             HStack(spacing: 9) {
-                Picker("類型", selection: $draftScope) { ForEach(TaskScope.allCases) { Text($0.title).tag($0) } }
-                    .labelsHidden().frame(width: 103).accessibilityLabel("新增事項類型")
+                Picker(prefs.text("類型"), selection: $draftScope) { ForEach(TaskScope.allCases) { Text(prefs.text($0.title)).tag($0) } }
+                    .labelsHidden().frame(width: 103).accessibilityLabel(prefs.text("新增事項類型"))
                 if draftScope != .anytime {
-                    DatePicker("安排日期", selection: $plannedDate, displayedComponents: .date).labelsHidden().datePickerStyle(.field)
-                        .accessibilityLabel("安排日期；週月目標會歸入該日期所屬週月")
+                    DatePicker(prefs.text("安排日期"), selection: $plannedDate, displayedComponents: .date).labelsHidden().datePickerStyle(.field)
+                        .accessibilityLabel(prefs.text("安排日期；週月目標會歸入該日期所屬週月"))
                 } else {
-                    Text("沒有完成期限").font(.system(size: 10)).foregroundStyle(Paper.faint)
+                    Text(prefs.text("沒有完成期限")).font(.system(size: 10)).foregroundStyle(paper.faint)
                 }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 7) {
                 if draftScope != .anytime {
-                    Picker("重複", selection: $repetition) { ForEach(draftScope.repeats) { Text($0.title).tag($0) } }
-                        .font(.system(size: 10)).frame(width: 140).accessibilityLabel("重複方式")
+                    Picker(prefs.text("重複"), selection: $repetition) { ForEach(draftScope.repeats) { Text(prefs.text($0.title)).tag($0) } }
+                        .font(.system(size: 10)).frame(width: 140).accessibilityLabel(prefs.text("重複方式"))
                 }
                 Spacer(minLength: 0)
-                Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }.buttonStyle(.plain).disabled(!store.canUndo).help("撤回最後一步")
+                Button { store.undo() } label: { Image(systemName: "arrow.uturn.backward") }.buttonStyle(.plain).disabled(!store.canUndo).help(prefs.text("撤回最後一步"))
                 Button(action: addTasks) {
-                    Text(inputCount > 1 ? "記下 \(inputCount) 件" : "記下來").font(.system(size: 12, weight: .medium))
+                    Text(inputCount > 1 ? prefs.format("記下 %d 件", inputCount) : prefs.text("記下來")).font(.system(size: 12, weight: .medium))
                         .padding(.horizontal, 14).padding(.vertical, 8).foregroundStyle(.white)
-                        .background(Paper.accent.opacity(inputCount == 0 ? 0.4 : 1), in: RoundedRectangle(cornerRadius: 8))
-                }.buttonStyle(.plain).disabled(inputCount == 0).keyboardShortcut(.return, modifiers: .command).help("⌘ Enter 加入")
+                        .background(paper.accent.opacity(inputCount == 0 ? 0.4 : 1), in: RoundedRectangle(cornerRadius: 8))
+                }.buttonStyle(.plain).disabled(inputCount == 0).keyboardShortcut(.return, modifiers: .command).help(prefs.text("⌘ Enter 加入"))
                     .accessibilityIdentifier("journal.add")
             }
         }.padding(.horizontal, 24).padding(.top, 13).padding(.bottom, 16)
-            .background(Paper.sheet.shadow(color: .black.opacity(0.04), radius: 6, y: -3))
+            .background(paper.sheet.shadow(color: .black.opacity(0.04), radius: 6, y: -3))
     }
 
     private func sectionHeading(_ title: String, detail: String) -> some View {
@@ -268,7 +261,7 @@ struct MacJournalView: View {
             Text(title).font(.system(size: 11, weight: .medium))
             Spacer()
             Text(detail).font(.system(size: 10, design: .monospaced))
-        }.foregroundStyle(Paper.faint).padding(.leading, 38).padding(.trailing, 25).padding(.top, 20).padding(.bottom, 10)
+        }.foregroundStyle(paper.faint).padding(.leading, 38).padding(.trailing, 25).padding(.top, 20).padding(.bottom, 10)
     }
     private func movePage(_ delta: Int) {
         let component: Calendar.Component = section == .week ? .weekOfYear : section == .month || section == .calendar ? .month : .day
@@ -297,7 +290,6 @@ struct JournalCheckbox: NSViewRepresentable {
         button.title = ""
         button.imagePosition = .imageOnly
         button.controlSize = .regular
-        button.contentTintColor = NSColor(red: 0.58, green: 0.30, blue: 0.22, alpha: 1)
         button.target = context.coordinator
         button.action = #selector(Coordinator.changed(_:))
         button.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -306,9 +298,10 @@ struct JournalCheckbox: NSViewRepresentable {
     func updateNSView(_ button: FirstClickCheckboxButton, context: Context) {
         context.coordinator.action = action
         button.state = completed ? .on : .off
+        button.contentTintColor = NSColor(context.environment.paperPalette.accent)
         button.setAccessibilityLabel(label)
         button.setAccessibilityIdentifier("journal.checkbox")
-        button.toolTip = "完成並移到已完成列表"
+        button.toolTip = AppLanguage.resolve(context.environment.locale).text("完成並移到已完成列表")
     }
     @MainActor final class Coordinator: NSObject {
         var action: (Bool) -> Bool
@@ -337,7 +330,7 @@ struct ReturnToPendingButton: NSViewRepresentable {
         button.setButtonType(.momentaryPushIn)
         button.bezelStyle = .rounded
         button.controlSize = .small
-        button.title = "移回待辦"
+        button.title = AppLanguage.resolve(context.environment.locale).text("移回待辦")
         button.target = context.coordinator
         button.action = #selector(Coordinator.pressed)
         return button
@@ -345,6 +338,7 @@ struct ReturnToPendingButton: NSViewRepresentable {
     func updateNSView(_ button: FirstClickCheckboxButton, context: Context) {
         context.coordinator.action = action
         button.setAccessibilityLabel(label)
+        button.title = AppLanguage.resolve(context.environment.locale).text("移回待辦")
         button.setAccessibilityIdentifier("journal.returnToPending")
     }
     @MainActor final class Coordinator: NSObject {
@@ -355,50 +349,52 @@ struct ReturnToPendingButton: NSViewRepresentable {
 }
 
 private struct JournalTaskRow: View {
+    @Environment(\.paperPalette) private var paper
     let entry: TaskOccurrence
     let store: TaskStore
+    private var prefs: AppPreferences { store.preferences }
     let edit: () -> Void
     @State private var dragOffset: CGFloat = 0
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
             if entry.isCompleted {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(Paper.faint).frame(width: 32, height: 32).padding(.top, -5)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(paper.faint).frame(width: 32, height: 32).padding(.top, -5)
             } else {
-                JournalCheckbox(completed: false, label: "完成 " + entry.task.title) { target in
+                JournalCheckbox(completed: false, label: prefs.text("完成 ") + entry.task.title) { target in
                     target && store.setCompleted(entry.task, occurrenceDate: entry.date, completed: true)
                 }.frame(width: 32, height: 32).padding(.top, -5)
             }
             VStack(alignment: .leading, spacing: 6) {
                 if entry.isCompleted { PencilTitle(title: entry.task.title) }
                 else { Text(entry.task.title).font(.system(size: 15, design: .serif)).lineSpacing(5).fixedSize(horizontal: false, vertical: true) }
-                Text(detail).font(.system(size: 10)).foregroundStyle(Paper.faint)
+                Text(detail).font(.system(size: 10)).foregroundStyle(paper.faint)
                 if entry.isCompleted {
-                    ReturnToPendingButton(label: "移回待辦 " + entry.task.title) { store.returnToPending(entry) }
+                    ReturnToPendingButton(label: prefs.text("移回待辦 ") + entry.task.title) { store.returnToPending(entry) }
                         .frame(width: 86, height: 26)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 5) {
                 HStack(spacing: 3) {
                     Menu {
-                        Button(entry.isCompleted ? "移回待辦" : "標記完成") {
+                        Button(entry.isCompleted ? prefs.text("移回待辦") : prefs.text("標記完成")) {
                             store.setCompleted(entry.task, occurrenceDate: entry.date, completed: !entry.isCompleted)
                         }
                         if entry.task.recurrence == .none {
-                            Button("安排日期／改成目標／設定重複", action: edit)
+                            Button(prefs.text("安排日期／改成目標／設定重複"), action: edit)
                         } else if entry.task.repeatEnd == nil {
-                            Button("本期後停止重複，保留紀錄") { store.stopRepeating(entry.task) }
+                            Button(prefs.text("本期後停止重複，保留紀錄")) { store.stopRepeating(entry.task) }
                         }
-                        Button("移到清單尾端") { store.later(entry.task) }
+                        Button(prefs.text("移到清單尾端")) { store.later(entry.task) }
                         Divider()
-                        Button("刪除事項", role: .destructive) { store.delete(entry.task) }
+                        Button(prefs.text("刪除事項"), role: .destructive) { store.delete(entry.task) }
                     } label: { Image(systemName: "ellipsis").frame(width: 22, height: 20) }
-                        .menuStyle(.borderlessButton).fixedSize().help("事項設定").accessibilityLabel("設定 \(entry.task.title)")
+                        .menuStyle(.borderlessButton).fixedSize().help(prefs.text("事項設定")).accessibilityLabel(prefs.text("設定 ") + entry.task.title)
                     Button { store.delete(entry.task) } label: { Image(systemName: "trash").font(.system(size: 11)).frame(width: 24, height: 24) }
-                        .buttonStyle(.plain).help(entry.task.recurrence == .none ? "刪除事項；可從垃圾桶還原" : "刪除整個重複系列；可從垃圾桶還原")
-                        .accessibilityLabel("刪除 \(entry.task.title)")
+                        .buttonStyle(.plain).help(entry.task.recurrence == .none ? prefs.text("刪除事項；可從垃圾桶還原") : prefs.text("刪除整個重複系列；可從垃圾桶還原"))
+                        .accessibilityLabel(prefs.text("刪除 ") + entry.task.title)
                 }
-                Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(Paper.faint.opacity(0.6))
-                    .frame(width: 24, height: 18).contentShape(Rectangle()).help("只在此把手拖動：右滑完成，左滑移到隊尾")
+                Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(paper.faint.opacity(0.6))
+                    .frame(width: 24, height: 18).contentShape(Rectangle()).help(prefs.text("只在此把手拖動：右滑完成，左滑移到隊尾"))
                     .gesture(DragGesture(minimumDistance: 20).onChanged { value in
                         if abs(value.translation.width) > abs(value.translation.height) { dragOffset = max(-60, min(60, value.translation.width)) }
                     }.onEnded { value in
@@ -408,29 +404,31 @@ private struct JournalTaskRow: View {
                         }
                         dragOffset = 0
                     })
-            }.foregroundStyle(Paper.faint)
+            }.foregroundStyle(paper.faint)
         }
         .padding(.leading, 27).padding(.trailing, 20).padding(.vertical, 12)
-        .overlay(alignment: .bottom) { Rectangle().fill(Paper.line.opacity(0.4)).frame(height: 0.5).padding(.leading, 38).padding(.trailing, 24).allowsHitTesting(false) }
+        .overlay(alignment: .bottom) { Rectangle().fill(paper.line.opacity(0.4)).frame(height: 0.5).padding(.leading, 38).padding(.trailing, 24).allowsHitTesting(false) }
         .offset(x: dragOffset)
     }
     private var detail: String {
         var parts: [String] = []
-        if let date = entry.date { parts.append(date.formatted(.dateTime.month().day())) }
-        else { parts.append("沒有期限") }
-        if entry.task.recurrence != .none { parts.append(entry.task.recurrence.title + "重複") }
-        if entry.task.repeatEnd != nil { parts.append("本期後停止重複") }
+        if let date = entry.date { parts.append(date.formatted(.dateTime.month().day().locale(prefs.locale))) }
+        else { parts.append(prefs.text("沒有期限")) }
+        if entry.task.recurrence != .none { parts.append(prefs.format("%@重複", prefs.text(entry.task.recurrence.title))) }
+        if entry.task.repeatEnd != nil { parts.append(prefs.text("本期後停止重複")) }
         if entry.isCompleted {
-            if let date = entry.completedAt { parts.append(date.formatted(.dateTime.month().day().hour().minute()) + " 完成") }
-            else { parts.append("舊版已完成 · 未記錄時間") }
+            if let date = entry.completedAt { parts.append(date.formatted(.dateTime.month().day().hour().minute().locale(prefs.locale)) + prefs.text(" 完成")) }
+            else { parts.append(prefs.text("舊版已完成 · 未記錄時間")) }
         }
         return parts.joined(separator: " · ")
     }
 }
 
 private struct JournalCalendar: View {
+    @Environment(\.paperPalette) private var paper
     @Binding var date: Date
     let store: TaskStore
+    private var prefs: AppPreferences { store.preferences }
     private var month: DateInterval { store.interval(for: date, scope: .month) }
     private var days: [Date] {
         let count = store.calendar.range(of: .day, in: .month, for: date)!.count
@@ -440,7 +438,7 @@ private struct JournalCalendar: View {
     var body: some View {
         VStack(spacing: 7) {
             HStack {
-                ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { day in Text(day).font(.system(size: 10)).frame(maxWidth: .infinity).foregroundStyle(Paper.faint) }
+                ForEach(prefs.weekdaySymbols, id: \.self) { day in Text(day).font(.system(size: 10)).frame(maxWidth: .infinity).foregroundStyle(paper.faint) }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 7), spacing: 3) {
                 ForEach(0..<offset, id: \.self) { _ in Color.clear.frame(height: 32) }
@@ -450,11 +448,11 @@ private struct JournalCalendar: View {
                     Button { date = day } label: {
                         VStack(spacing: 3) {
                             Text("\(store.calendar.component(.day, from: day))").font(.system(size: 11, weight: store.calendar.isDateInToday(day) ? .bold : .regular))
-                            Circle().fill(occurrences.isEmpty ? .clear : selected ? .white.opacity(0.8) : Paper.accent).frame(width: 3, height: 3)
+                            Circle().fill(occurrences.isEmpty ? .clear : selected ? .white.opacity(0.8) : paper.accent).frame(width: 3, height: 3)
                         }.frame(maxWidth: .infinity).frame(height: 32).contentShape(Rectangle())
-                            .background(selected ? Paper.accent : Color.clear, in: RoundedRectangle(cornerRadius: 7))
-                            .foregroundStyle(selected ? .white : Paper.ink)
-                    }.buttonStyle(.plain).accessibilityLabel(day.formatted(date: .complete, time: .omitted) + "，\(occurrences.count) 件事項")
+                            .background(selected ? paper.accent : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                            .foregroundStyle(selected ? .white : paper.ink)
+                    }.buttonStyle(.plain).accessibilityLabel(day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(prefs.locale)) + prefs.format("，%d 件事項", occurrences.count))
                         .accessibilityAddTraits(selected ? [.isSelected] : [])
                 }
             }
@@ -463,8 +461,10 @@ private struct JournalCalendar: View {
 }
 
 private struct TaskPlanEditor: View {
+    @Environment(\.paperPalette) private var paper
     let task: TaskItem
     let store: TaskStore
+    private var prefs: AppPreferences { store.preferences }
     @Environment(\.dismiss) private var dismiss
     @State private var scope: TaskScope
     @State private var date: Date
@@ -476,29 +476,31 @@ private struct TaskPlanEditor: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("為這件事，留個位置。").font(.system(size: 22, design: .serif))
+            Text(prefs.text("為這件事，留個位置。")).font(.system(size: 22, design: .serif))
             Text(task.title).font(.body).fixedSize(horizontal: false, vertical: true)
-            Picker("類型", selection: $scope) { ForEach(TaskScope.allCases) { Text($0.title).tag($0) } }
+            Picker(prefs.text("類型"), selection: $scope) { ForEach(TaskScope.allCases) { Text(prefs.text($0.title)).tag($0) } }
             if scope != .anytime {
-                DatePicker("安排日期", selection: $date, displayedComponents: .date)
-                Picker("重複", selection: $recurrence) { ForEach(scope.repeats) { Text($0.title).tag($0) } }
+                DatePicker(prefs.text("安排日期"), selection: $date, displayedComponents: .date)
+                Picker(prefs.text("重複"), selection: $recurrence) { ForEach(scope.repeats) { Text(prefs.text($0.title)).tag($0) } }
             }
-            Text(scope == .week ? "週一至週日為一週，整週都能看到目標。" : scope == .month ? "整個月都能看到目標。" : "未完成的日事項會留在今天，未來事項到當天才出現。")
-                .font(.caption).foregroundStyle(Paper.faint)
-            if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
-            HStack { Button("取消") { dismiss() }; Spacer(); Button("儲存安排") {
+            Text(scope == .week ? prefs.text("週一至週日為一週，整週都能看到目標。") : scope == .month ? prefs.text("整個月都能看到目標。") : prefs.text("未完成的日事項會留在今天，未來事項到當天才出現。"))
+                .font(.caption).foregroundStyle(paper.faint)
+            if let error = store.errorMessage { Text(prefs.text(error)).font(.caption).foregroundStyle(.red) }
+            HStack { Button(prefs.text("取消")) { dismiss() }; Spacer(); Button(prefs.text("儲存安排")) {
                 if store.updatePlan(task, scope: scope, date: scope == .anytime ? nil : date, recurrence: recurrence) { dismiss() }
             }.buttonStyle(.borderedProminent) }
-        }.padding(26).frame(width: 360).background(Paper.sheet).tint(Paper.accent).preferredColorScheme(.light)
+        }.padding(26).frame(width: 360).background(paper.sheet).tint(paper.accent).preferredColorScheme(.light)
             .onChange(of: scope) { _, scope in if !scope.repeats.contains(recurrence) { recurrence = .none } }
     }
 }
 // Text stays selectable and accessible; two graphite strokes follow each wrapped line.
 private struct PencilTitle: View {
+    @Environment(\.paperPalette) private var paper
     let title: String
+    @Environment(\.locale) private var locale
     var body: some View {
         Text(title).font(.system(size: 15, design: .serif)).lineSpacing(5)
-            .foregroundStyle(Paper.faint).fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(paper.faint).fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             .overlay {
                 GeometryReader { geometry in
@@ -520,30 +522,16 @@ private struct PencilTitle: View {
                             stroke.addLine(to: CGPoint(x: width * 0.32, y: y - 0.4))
                             stroke.addLine(to: CGPoint(x: width * 0.69, y: y + 0.7))
                             stroke.addLine(to: CGPoint(x: width, y: y - 0.6))
-                            context.stroke(stroke, with: .color(Paper.ink.opacity(0.6)), style: StrokeStyle(lineWidth: 0.85, lineCap: .round))
-                            context.stroke(stroke.offsetBy(dx: 0.3, dy: 1.4), with: .color(Paper.ink.opacity(0.16)), lineWidth: 0.5)
+                            context.stroke(stroke, with: .color(paper.ink.opacity(0.6)), style: StrokeStyle(lineWidth: 0.85, lineCap: .round))
+                            context.stroke(stroke.offsetBy(dx: 0.3, dy: 1.4), with: .color(paper.ink.opacity(0.16)), lineWidth: 0.5)
                             index += count
                             lineIndex += 1
                         }
                     }
                 }.allowsHitTesting(false).accessibilityHidden(true)
             }
-            .accessibilityLabel("已完成：\(title)")
+            .accessibilityLabel(AppLanguage.resolve(locale).text("已完成：") + title)
     }
 }
 
-private struct RuledPaper: View {
-    var body: some View {
-        Canvas { context, size in
-            var lines = Path()
-            for y in stride(from: CGFloat(1), to: size.height, by: 32) {
-                lines.move(to: CGPoint(x: 0, y: y)); lines.addLine(to: CGPoint(x: size.width, y: y))
-            }
-            context.stroke(lines, with: .color(Paper.line.opacity(0.17)), lineWidth: 0.5)
-            var margin = Path()
-            margin.move(to: CGPoint(x: 25, y: 0)); margin.addLine(to: CGPoint(x: 25, y: size.height))
-            context.stroke(margin, with: .color(Paper.accent.opacity(0.17)), lineWidth: 0.7)
-        }.background(Paper.sheet)
-    }
-}
 #endif

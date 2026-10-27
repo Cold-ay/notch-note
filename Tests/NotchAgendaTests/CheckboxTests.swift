@@ -77,6 +77,13 @@ final class CheckboxTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(20))
         }
         let returnButton = try XCTUnwrap(control(in: host, identifier: "journal.returnToPending"))
+        XCTAssertTrue(store.preferences.setLanguage(.english))
+        for _ in 0..<30 {
+            host.layoutSubtreeIfNeeded()
+            if returnButton.title == "Move to To do" { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(returnButton.title, "Move to To do")
         returnButton.performClick(nil)
         XCTAssertFalse(try XCTUnwrap(store.tasks.first).completed)
         XCTAssertEqual(store.tasks.first?.records.map(\.action), [.completed])

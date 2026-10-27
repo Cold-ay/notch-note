@@ -4,6 +4,53 @@ import XCTest
 @testable import NotchAgenda
 
 final class NotchHoverTests: XCTestCase {
+    func testNotchMatchesMeasuredCameraSizeWithoutExtraBrandCapsule() {
+        let screen = NSRect(x: 0, y: 0, width: 1512, height: 982)
+        let visible = NSRect(x: 0, y: 70, width: 1512, height: 880)
+        for width in [CGFloat(164), 190, 236] {
+            let camera = NSRect(x: screen.midX - width / 2, y: 950, width: width, height: 32)
+            let layout = NotchGeometry(screenFrame: screen, visibleFrame: visible, safeTop: 32, cameraFrame: camera)
+            XCTAssertTrue(layout.hasNotch)
+            XCTAssertEqual(layout.launcherFrame.width, width)
+            XCTAssertEqual(layout.launcherFrame.midX, camera.midX)
+            XCTAssertEqual(layout.launcherFrame.height, 37)
+            XCTAssertEqual(layout.launcherFrame.maxY, screen.maxY)
+            XCTAssertEqual(layout.expandedFrame.maxY, camera.minY)
+        }
+    }
+
+    func testAuxiliaryAreasSupportGlobalAndLocalExternalCoordinates() throws {
+        let screen = NSRect(x: -1512, y: 200, width: 1512, height: 982)
+        let localLeft = NSRect(x: 0, y: 950, width: 661, height: 32)
+        let localRight = NSRect(x: 851, y: 950, width: 661, height: 32)
+        let local = try XCTUnwrap(NotchGeometry.cameraFrame(screenFrame: screen, safeTop: 32, leftArea: localLeft, rightArea: localRight))
+        let global = try XCTUnwrap(NotchGeometry.cameraFrame(screenFrame: screen, safeTop: 32, leftArea: localLeft.offsetBy(dx: -1512, dy: 200), rightArea: localRight.offsetBy(dx: -1512, dy: 200)))
+        XCTAssertEqual(local, global)
+        XCTAssertEqual(local.midX, screen.midX)
+        XCTAssertEqual(local.width, 190)
+        XCTAssertEqual(local.maxY, screen.maxY)
+        XCTAssertNil(NotchGeometry.cameraFrame(screenFrame: screen, safeTop: 0, leftArea: localLeft, rightArea: localRight))
+        XCTAssertNil(NotchGeometry.cameraFrame(screenFrame: screen, safeTop: 32, leftArea: .zero, rightArea: .zero))
+    }
+
+    func testNoNotchKeepsExistingCapsuleAndPlacement() {
+        let screen = NSRect(x: 100, y: 200, width: 1920, height: 1080)
+        let visible = NSRect(x: 100, y: 240, width: 1920, height: 1016)
+        let layout = NotchGeometry(screenFrame: screen, visibleFrame: visible, safeTop: 0)
+        XCTAssertFalse(layout.hasNotch)
+        XCTAssertEqual(layout.launcherFrame, NSRect(x: screen.midX - 80, y: visible.maxY - 26, width: 160, height: 24))
+        XCTAssertEqual(layout.triggerFrame.width, 200)
+        XCTAssertEqual(layout.expandedFrame.maxY, visible.maxY - 6)
+    }
+
+    func testNotchFallbackRemainsBoundedWhenMeasurementsUnavailable() {
+        let screen = NSRect(x: 0, y: 0, width: 1512, height: 982)
+        let layout = NotchGeometry(screenFrame: screen, visibleFrame: screen, safeTop: 32)
+        XCTAssertTrue(layout.hasNotch)
+        XCTAssertEqual(layout.launcherFrame.midX, screen.midX)
+        XCTAssertLessThanOrEqual(layout.launcherFrame.width, 220)
+        XCTAssertEqual(layout.launcherFrame.height, 37)
+    }
     @MainActor func testEscapeReachesPanelDismissAction() throws {
         _ = NSApplication.shared
         let panel = JournalPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 700), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)

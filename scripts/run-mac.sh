@@ -26,8 +26,8 @@ info = {
     'CFBundleIdentifier': 'com.colday.notchagenda.qa' if qa else 'com.colday.notchagenda.mac',
     'CFBundleName': 'NotchAgenda QA' if qa else 'NotchAgenda',
     'CFBundlePackageType': 'APPL',
-    'CFBundleVersion': '6',
-    'CFBundleShortVersionString': '0.6.0',
+    'CFBundleVersion': '10',
+    'CFBundleShortVersionString': '0.9.0',
     'LSMinimumSystemVersion': '14.0',
     'NSHighResolutionCapable': True,
 }

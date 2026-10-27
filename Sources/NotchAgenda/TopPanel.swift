@@ -2,7 +2,6 @@
 import AppKit
 import Combine
 import Observation
-import QuartzCore
 import SwiftUI
 
 final class JournalPanel: NSPanel {
@@ -50,6 +49,9 @@ private final class LauncherPanel: NSPanel {
     private var menuTracking = false
     private var transition = 0
     private var started = false
+    private let slideAnimator = PanelSlideAnimator()
+    private var isRetracting = false
+    private var allowHoverResume = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -66,11 +68,17 @@ private final class LauncherPanel: NSPanel {
             .sink { [weak self] _ in Task { @MainActor in self?.menuTracking = true } }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)
             .sink { [weak self] _ in Task { @MainActor in self?.menuTracking = false } }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: AppPreferences.didChange)
+            .sink { [weak self] _ in Task { @MainActor in self?.refreshTitles() } }.store(in: &subscriptions)
         refreshScreens()
         updateTimer()
     }
 
     func stop() {
+        transition += 1
+        slideAnimator.cancel()
+        isRetracting = false
+        allowHoverResume = false
         timer?.invalidate()
         timer = nil
         subscriptions.removeAll()
@@ -104,7 +112,7 @@ private final class LauncherPanel: NSPanel {
         present(on: screen, focus: true, pinned: true)
     }
 
-    func collapse() {
+    func collapse(automatically: Bool = false) {
         guard state.isPresented else { return }
         // Avoid hiding an editor that could not save its text.
         guard store?.journal.flushAllDrafts() != false else { state.isPinned = true; return }
@@ -113,21 +121,25 @@ private final class LauncherPanel: NSPanel {
         state.isPresented = false
         state.isPinned = false
         policy.suppressUntilExit()
-        if let screen = activeScreenID, state.hoverEnabled { launchers[screen]?.orderFrontRegardless() }
         guard let panel else { return }
+        let finish: () -> Void = { [weak self, weak panel] in
+            guard let self, self.transition == generation else { return }
+            panel?.orderOut(nil)
+            self.isRetracting = false
+            self.allowHoverResume = false
+            if let screen = self.activeScreenID, self.state.hoverEnabled { self.launchers[screen]?.orderFrontRegardless() }
+        }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            panel.orderOut(nil)
+            slideAnimator.cancel()
+            finish()
             return
         }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
-            panel.animator().alphaValue = 0
-        } completionHandler: { [weak self, weak panel] in
-            Task { @MainActor in
-                guard self?.transition == generation else { return }
-                panel?.orderOut(nil)
-            }
-        }
+        isRetracting = true
+        allowHoverResume = automatically
+        let safeTop = NSScreen.screens.first(where: { screenID($0) == activeScreenID })?.safeAreaInsets.top ?? 0
+        let current = slideAnimator.presentation(of: panel)
+        let destination = PanelPresentation(frame: PanelSlideMotion.retractedFrame(from: current.frame, safeTop: safeTop), opacity: 0)
+        slideAnimator.animate(panel, to: destination, duration: PanelSlideMotion.closingDuration, completion: finish)
     }
 
     private func updateTimer() {
@@ -144,6 +156,15 @@ private final class LauncherPanel: NSPanel {
     private func tick() {
         guard state.hoverEnabled, store != nil else { return }
         let mouse = NSEvent.mouseLocation
+        if isRetracting, allowHoverResume, let panel,
+           let currentScreen = NSScreen.screens.first(where: { screenID($0) == activeScreenID }) {
+            let presentation = slideAnimator.presentation(of: panel)
+            let overVisiblePanel = presentation.opacity > 0.12 && presentation.frame.insetBy(dx: -10, dy: -8).contains(mouse)
+            if overVisiblePanel || geometry(currentScreen).triggerFrame.contains(mouse) {
+                present(on: currentScreen, focus: false, pinned: false)
+                return
+            }
+        }
         let screen: NSScreen?
         if state.isPresented { screen = NSScreen.screens.first { screenID($0) == activeScreenID } }
         else { screen = NSScreen.screens.first { geometry($0).triggerFrame.contains(mouse) } }
@@ -161,7 +182,7 @@ private final class LauncherPanel: NSPanel {
         let decision = policy.update(now: ProcessInfo.processInfo.systemUptime, inTrigger: layout.triggerFrame.contains(mouse), inPanel: inPanel, presented: state.isPresented, protected: protected)
         switch decision {
         case .expand: present(on: screen, focus: false, pinned: false)
-        case .collapse: collapse()
+        case .collapse: collapse(automatically: true)
         case nil: break
         }
     }
@@ -174,7 +195,7 @@ private final class LauncherPanel: NSPanel {
         if let panel { window = panel }
         else {
             window = JournalPanel(contentRect: layout.expandedFrame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            window.title = "NotchAgenda 頂部日記"
+            window.title = store.preferences.text("NotchAgenda 頂部日記")
             window.setAccessibilityIdentifier("notchagenda.journalPanel")
             window.level = .floating
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -190,21 +211,24 @@ private final class LauncherPanel: NSPanel {
             window.contentView = NSHostingView(rootView: IslandExpandedView(store: store, state: state, pin: { [weak self] in self?.setPinned($0) }, dismiss: { [weak self] in self?.collapse() }))
             panel = window
         }
+        let canContinue = window.isVisible && activeScreenID == screenID(screen) && (state.isPresented || isRetracting)
+        let current = canContinue ? slideAnimator.presentation(of: window) : nil
+        slideAnimator.cancel()
+        isRetracting = false
+        allowHoverResume = false
         activeScreenID = screenID(screen)
         launchers[screenID(screen)]?.orderOut(nil)
         state.isPinned = pinned
         state.isPresented = true
-        window.setFrame(layout.expandedFrame, display: true)
-        window.alphaValue = 1
+        let destination = PanelPresentation(frame: layout.expandedFrame, opacity: 1)
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let initial = reduceMotion ? destination : current ?? PanelPresentation(frame: PanelSlideMotion.retractedFrame(from: layout.expandedFrame, safeTop: screen.safeAreaInsets.top), opacity: 0)
+        window.setFrame(initial.frame, display: true)
+        window.alphaValue = initial.opacity
         if focus { window.makeKeyAndOrderFront(nil) }
         else { window.orderFrontRegardless() }
-        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            window.alphaValue = 0
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                window.animator().alphaValue = 1
-            }
+        if !reduceMotion && initial != destination {
+            slideAnimator.animate(window, to: destination, duration: PanelSlideMotion.openingDuration)
         }
     }
 
@@ -213,14 +237,19 @@ private final class LauncherPanel: NSPanel {
     }
 
     private func geometry(_ screen: NSScreen) -> NotchGeometry {
-        let cameraWidth: CGFloat
-        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea { cameraWidth = max(0, right.minX - left.maxX) }
-        else { cameraWidth = 0 }
-        return NotchGeometry(screenFrame: screen.frame, visibleFrame: screen.visibleFrame, safeTop: screen.safeAreaInsets.top, cameraWidth: cameraWidth)
+        let camera = NotchGeometry.cameraFrame(screenFrame: screen.frame, safeTop: screen.safeAreaInsets.top, leftArea: screen.auxiliaryTopLeftArea, rightArea: screen.auxiliaryTopRightArea)
+        return NotchGeometry(screenFrame: screen.frame, visibleFrame: screen.visibleFrame, safeTop: screen.safeAreaInsets.top, cameraFrame: camera)
     }
 
     private func refreshScreens() {
         guard started else { return }
+        if isRetracting {
+            transition += 1
+            slideAnimator.cancel()
+            panel?.orderOut(nil)
+            isRetracting = false
+            allowHoverResume = false
+        }
         let current = Set(NSScreen.screens.map(screenID))
         for id in Array(launchers.keys) where !current.contains(id) { launchers.removeValue(forKey: id)?.orderOut(nil) }
         guard let store else { return }
@@ -231,7 +260,7 @@ private final class LauncherPanel: NSPanel {
             if let existing = launchers[id] { launcher = existing }
             else {
                 launcher = LauncherPanel(contentRect: layout.launcherFrame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-                launcher.title = "NotchAgenda hover 入口"
+                launcher.title = store.preferences.text("NotchAgenda hover 入口")
                 launcher.level = .statusBar
                 launcher.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
                 launcher.isOpaque = false
@@ -239,8 +268,11 @@ private final class LauncherPanel: NSPanel {
                 launcher.hasShadow = false
                 launcher.hidesOnDeactivate = false
                 launcher.ignoresMouseEvents = true // Do not block menu-bar clicks.
-                launcher.contentView = NSHostingView(rootView: IslandLauncherView(store: store))
+                launcher.contentView = NSHostingView(rootView: IslandLauncherView(store: store, hasNotch: layout.hasNotch))
                 launchers[id] = launcher
+            }
+            if let host = launcher.contentView as? NSHostingView<IslandLauncherView> {
+                host.rootView = IslandLauncherView(store: store, hasNotch: layout.hasNotch)
             }
             launcher.setFrame(layout.launcherFrame, display: true)
             if state.hoverEnabled && !(state.isPresented && activeScreenID == id) { launcher.orderFrontRegardless() }
@@ -253,6 +285,12 @@ private final class LauncherPanel: NSPanel {
             } else { collapse() }
         }
     }
+
+    private func refreshTitles() {
+        guard let store else { return }
+        panel?.title = store.preferences.text("NotchAgenda 頂部日記")
+        for launcher in launchers.values { launcher.title = store.preferences.text("NotchAgenda hover 入口") }
+    }
 }
 
 private struct IslandExpandedView: View {
@@ -260,32 +298,44 @@ private struct IslandExpandedView: View {
     let state: IslandState
     var pin: (Bool) -> Void
     var dismiss: () -> Void
+    private var prefs: AppPreferences { store.preferences }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Label("NotchAgenda", systemImage: "checklist").font(.system(size: 11, weight: .semibold))
                 Spacer()
                 Button { pin(!state.isPinned) } label: { Image(systemName: state.isPinned ? "pin.fill" : "pin").frame(width: 28, height: 24) }
-                    .help(state.isPinned ? "取消釘選，移開滑鼠後自動收起" : "釘選，保持面板展開").accessibilityLabel(state.isPinned ? "取消釘選" : "釘選面板")
-                Button(action: dismiss) { Image(systemName: "chevron.up").frame(width: 26, height: 24) }.help("收起 · Esc").accessibilityLabel("收起頂部日記")
+                    .help(prefs.text(state.isPinned ? "取消釘選，移開滑鼠後自動收起" : "釘選，保持面板展開")).accessibilityLabel(prefs.text(state.isPinned ? "取消釘選" : "釘選面板"))
+                Button(action: dismiss) { Image(systemName: "chevron.up").frame(width: 26, height: 24) }.help(prefs.text("收起 · Esc")).accessibilityLabel(prefs.text("收起頂部日記"))
             }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.9)).padding(.horizontal, 14).padding(.vertical, 3)
             MacJournalView(store: store, floating: true)
-        }.padding(5).background(.black, in: RoundedRectangle(cornerRadius: 24))
+        }.padding(5).background(.black, in: RoundedRectangle(cornerRadius: 24)).environment(\.locale, prefs.locale)
     }
 }
 
 private struct IslandLauncherView: View {
     let store: TaskStore
+    let hasNotch: Bool
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let count = store.pendingOccurrences(on: context.date, scope: .day, carryOver: true).count
-            HStack(spacing: 7) {
-                Image(systemName: "checklist").font(.system(size: 10))
-                Text("NotchAgenda").font(.system(size: 10, weight: .medium))
-                Text("\(count)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
-            }.foregroundStyle(.white.opacity(0.9)).frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.black, in: UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0))
-        }
+        Group {
+            if hasNotch {
+                // Hardware covers the upper area; draw only a quiet handle below it.
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Capsule().fill(.white.opacity(0.25)).frame(width: 22, height: 2).padding(.bottom, 1)
+                }
+            } else {
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    let count = store.pendingOccurrences(on: context.date, scope: .day, carryOver: true).count
+                    HStack(spacing: 7) {
+                        Image(systemName: "checklist").font(.system(size: 10))
+                        Text("NotchAgenda").font(.system(size: 10, weight: .medium))
+                        Text("\(count)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
+                    }.foregroundStyle(.white.opacity(0.9)).frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.black, in: UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0))
     }
 }
 

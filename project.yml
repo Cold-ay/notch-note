@@ -1,6 +1,6 @@
 name: NotchAgenda
 options:
-  bundleIdPrefix: com.example
+  bundleIdPrefix: com.colday
   deploymentTarget:
     iOS: '17.0'
     macOS: '14.0'
@@ -9,39 +9,87 @@ settings:
     SWIFT_VERSION: '6.0'
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_CFBundleDisplayName: NotchAgenda
+    MARKETING_VERSION: 0.9.0
+    CURRENT_PROJECT_VERSION: 10
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    TARGETED_DEVICE_FAMILY: '1,2'
 targets:
   NotchAgenda-iOS:
     type: application
     platform: iOS
-    sources: [Sources/NotchAgenda]
+    sources:
+      - path: Sources/NotchAgenda
+      - path: Resources/Assets.xcassets
+      - path: Resources/PrivacyInfo.xcprivacy
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.flowtasks
+        PRODUCT_NAME: NotchAgenda
+        PRODUCT_MODULE_NAME: NotchAgenda
+        PRODUCT_BUNDLE_IDENTIFIER: com.colday.notchagenda
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        TARGETED_DEVICE_FAMILY: '1,2'
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: 'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: 'UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
     entitlements:
       path: Config/iOS.entitlements
       properties:
-        com.apple.security.application-groups: [group.com.example.flowtasks]
+        com.apple.security.application-groups: [group.com.colday.notchagenda]
     dependencies:
       - target: NotchAgendaWidget
   NotchAgendaWidget:
     type: app-extension
     platform: iOS
-    sources: [Widgets]
+    sources:
+      - path: Widgets
+      - path: Sources/NotchAgenda/TaskStore.swift
+      - path: Sources/NotchAgenda/JournalStore.swift
+      - path: Sources/NotchAgenda/AppPreferences.swift
+      - path: Sources/NotchAgenda/EnglishStrings.swift
+      - path: Resources/PrivacyInfo.xcprivacy
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.flowtasks.widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.colday.notchagenda.widget
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
     info:
       path: Config/Widget-Info.plist
       properties:
+        CFBundleDisplayName: NotchAgenda
+        CFBundleShortVersionString: '$(MARKETING_VERSION)'
+        CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: Config/Widget.entitlements
       properties:
-        com.apple.security.application-groups: [group.com.example.flowtasks]
+        com.apple.security.application-groups: [group.com.colday.notchagenda]
+  NotchAgenda-iOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests/NotchAgendaTests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.colday.notchagenda.tests
+        TEST_HOST: '$(BUILT_PRODUCTS_DIR)/NotchAgenda.app/NotchAgenda'
+        BUNDLE_LOADER: '$(TEST_HOST)'
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+    dependencies:
+      - target: NotchAgenda-iOS
+  NotchAgenda-iOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/NotchAgendaUITests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.colday.notchagenda.uitests
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+    dependencies:
+      - target: NotchAgenda-iOS
   NotchAgenda-macOS:
     type: application
     platform: macOS
@@ -49,3 +97,15 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.colday.notchagenda.mac
+        ASSETCATALOG_COMPILER_APPICON_NAME: ''
+schemes:
+  NotchAgenda-iOS:
+    build:
+      targets:
+        NotchAgenda-iOS: all
+    test:
+      targets:
+        - NotchAgenda-iOSTests
+        - NotchAgenda-iOSUITests
+    archive:
+      config: Release

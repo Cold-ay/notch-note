@@ -3,24 +3,48 @@ import AppKit
 
 /// All rectangles use AppKit global screen coordinates (origin at bottom left).
 struct NotchGeometry {
+    let hasNotch: Bool
     let triggerFrame: NSRect
     let launcherFrame: NSRect
     let expandedFrame: NSRect
     let bridgeFrame: NSRect
 
-    init(screenFrame: NSRect, visibleFrame: NSRect, safeTop: CGFloat, cameraWidth: CGFloat = 0) {
-        let hasNotch = safeTop > 0
-        let width = min(max(cameraWidth + 28, hasNotch ? 190 : 160), 360)
-        let launcherHeight: CGFloat = 24
-        let launcherTop = hasNotch ? screenFrame.maxY - safeTop + 2 : visibleFrame.maxY - 2
-        launcherFrame = NSRect(x: screenFrame.midX - width / 2, y: launcherTop - launcherHeight, width: width, height: launcherHeight)
-        let triggerWidth = min(width + 40, screenFrame.width)
-        triggerFrame = NSRect(x: screenFrame.midX - triggerWidth / 2, y: launcherFrame.minY - 4, width: triggerWidth, height: screenFrame.maxY - launcherFrame.minY + 4)
+    /// Reads both global and screen-local auxiliary rectangles without assuming the
+    /// display starts at (0, 0). All returned measurements are points, not pixels.
+    static func cameraFrame(screenFrame: NSRect, safeTop: CGFloat, leftArea: NSRect?, rightArea: NSRect?) -> NSRect? {
+        guard safeTop > 0, let left = leftArea, let right = rightArea,
+              left.width > 0, right.width > 0 else { return nil }
+        let width = right.minX - left.maxX
+        guard width > 0, width < screenFrame.width else { return nil }
+        let isLocal = abs(left.minX) < 1 && abs(right.maxX - screenFrame.width) < 1
+        let isGlobal = abs(left.minX - screenFrame.minX) < 1 && abs(right.maxX - screenFrame.maxX) < 1
+        guard isLocal || isGlobal else { return nil }
+        let x = left.maxX + (isGlobal ? 0 : screenFrame.minX)
+        return NSRect(x: x, y: screenFrame.maxY - safeTop, width: width, height: safeTop)
+    }
+
+    init(screenFrame: NSRect, visibleFrame: NSRect, safeTop: CGFloat, cameraWidth: CGFloat = 0, cameraFrame: NSRect? = nil) {
+        hasNotch = safeTop > 0
+        let measured = cameraFrame.flatMap { frame -> NSRect? in
+            guard frame.width > 0, frame.minX >= screenFrame.minX, frame.maxX <= screenFrame.maxX else { return nil }
+            return frame
+        }
+        let fallbackWidth = cameraWidth > 0 ? cameraWidth : min(220, max(140, safeTop * 6))
+        let width = hasNotch ? min(measured?.width ?? fallbackWidth, screenFrame.width) : 160
+        let centerX = hasNotch ? measured?.midX ?? screenFrame.midX : screenFrame.midX
+        if hasNotch {
+            // Match the hardware width exactly; only a five-point lip is added below it.
+            launcherFrame = NSRect(x: centerX - width / 2, y: screenFrame.maxY - safeTop - 5, width: width, height: safeTop + 5)
+        } else {
+            // Preserve the existing non-notched capsule and menu-bar positioning.
+            launcherFrame = NSRect(x: centerX - width / 2, y: visibleFrame.maxY - 26, width: width, height: 24)
+        }
+        let triggerWidth = min(width + (hasNotch ? 20 : 40), screenFrame.width)
+        triggerFrame = NSRect(x: centerX - triggerWidth / 2, y: launcherFrame.minY - 4, width: triggerWidth, height: screenFrame.maxY - launcherFrame.minY + 4)
         let panelWidth = min(460, visibleFrame.width)
         let panelHeight = min(780, visibleFrame.height - 16)
-        let panelTop = min(visibleFrame.maxY, screenFrame.maxY - safeTop) - 6
-        expandedFrame = NSRect(x: min(max(screenFrame.midX - panelWidth / 2, visibleFrame.minX), visibleFrame.maxX - panelWidth), y: panelTop - panelHeight, width: panelWidth, height: panelHeight)
-        // Include the small travel gap so the panel stays open on the way down.
+        let panelTop = min(visibleFrame.maxY, screenFrame.maxY - safeTop) + (hasNotch ? 0 : -6)
+        expandedFrame = NSRect(x: min(max(centerX - panelWidth / 2, visibleFrame.minX), visibleFrame.maxX - panelWidth), y: panelTop - panelHeight, width: panelWidth, height: panelHeight)
         bridgeFrame = triggerFrame.union(expandedFrame).insetBy(dx: -10, dy: -8)
     }
 }

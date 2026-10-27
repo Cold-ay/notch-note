@@ -33,13 +33,18 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
 | --- | --- |
 | `Sources/NotchAgenda/NotchAgendaApp.swift` | App／選單列場景、共用 store、初次背景啟動、主視窗、退出前保存 |
 | `Sources/NotchAgenda/TopPanel.swift` | NSPanel、黑色入口、hover timer、釘選、焦點、動畫、多螢幕及生命週期 |
-| `Sources/NotchAgenda/NotchHover.swift` | 純幾何 `NotchGeometry` 及純狀態機 `HoverPolicy` |
+| `Sources/NotchAgenda/NotchHover.swift` | 相機區量測、純幾何 `NotchGeometry` 及純狀態機 `HoverPolicy` |
+| `Sources/NotchAgenda/PanelSlideAnimator.swift` | 可中斷的位置／透明度插值與短生命週期動畫 timer |
 | `Sources/NotchAgenda/MacJournalView.swift` | 五頁導覽、待辦／已完成／日記切換、輸入、原生 checkbox、移回待辦、月曆、日期安排 |
+| `Sources/NotchAgenda/AppPreferences.swift` | 語言、穩定頁面 ID、外觀／紙張、JSON 設定保存與相容 |
+| `Sources/NotchAgenda/EnglishStrings.swift` | English UI 字串；繁轉簡使用 ICU 並覆寫常用介面用語 |
+| `Sources/NotchAgenda/AppSettingsView.swift` | 語言設定、外表與內頁獨立選擇及即時預覽 |
+| `Sources/NotchAgenda/NotebookAppearance.swift` | 配色、封面裝飾及 SwiftUI 環境值 |
 | `Sources/NotchAgenda/TaskStore.swift` | 任務模型、時間區間、重複投影、完成、刪除、資料相容及 JSON 保存 |
 | `Sources/NotchAgenda/JournalStore.swift` | 文字日記、週期 key、共用草稿、自動儲存 API、日記單步復原 |
 | `Sources/NotchAgenda/JournalEditor.swift` | 日記 TextEditor、650ms 儲存、切頁保存、垃圾桶 UI |
-| `Sources/NotchAgenda/ContentView.swift` | iPhone 原型，並非目前主要 Mac UI |
-| `Widgets/NotchAgendaWidget.swift` | iPhone Widget 原型與 App Group 讀取 |
+| `Sources/NotchAgenda/ContentView.swift` | iPhone／iPad 五個頁面、滑動待辦、安排、垃圾桶與日記 |
+| `Widgets/NotchAgendaWidget.swift` | iPhone Widget、共用當期 occurrence 查詢及 App Group 讀取 |
 | `Tests/NotchAgendaTests/` | 檔案保存、重複規則、日記、垃圾桶、native UI 整合及 hover 測試 |
 | `scripts/run-mac.sh` | Debug App bundle、版本、QA bundle identifier 與資料覆寫 |
 | `project.yml` | XcodeGen iOS／macOS／Widget target、App Group 設定 |
@@ -71,7 +76,7 @@ Store 在 App 層建立，主視窗與浮動面板共用。NSHostingView 只建�
 
 ### 幾何與螢幕座標
 
-`NotchGeometry` 接收 screen frame、visible frame、safe-area top inset 及相機區寬度，產生：
+`NotchGeometry` 接收 screen frame、visible frame、safe-area top inset 及量測的相機區矩形，產生：
 
 - `triggerFrame`：頂部中央、相機及小黑色入口的觸發區。
 - `launcherFrame`：收起時顯示的黑色入口。
@@ -80,7 +85,9 @@ Store 在 App 層建立，主視窗與浮動面板共用。NSHostingView 只建�
 
 全部使用 AppKit 全域螢幕座標，左下角為原點；外接螢幕可能有負 X／Y。不要假設主螢幕在 `(0, 0)`，亦不要將 SwiftUI 左上角座標直接混用。
 
-滑鼠位置由 [`NSEvent.mouseLocation`](https://developer.apple.com/documentation/appkit/nsevent/mouselocation) 取得；它回傳螢幕座標。相機寬度使用 [`NSScreen.auxiliaryTopLeftArea`](https://developer.apple.com/documentation/appkit/nsscreen/auxiliarytopleftarea) 與右側區域的間距，安全區為零時使用無瀏海頂部中央方案。
+滑鼠位置由 [`NSEvent.mouseLocation`](https://developer.apple.com/documentation/appkit/nsevent/mouselocation) 取得；它回傳螢幕座標。相機區使用 [`NSScreen.auxiliaryTopLeftArea`](https://developer.apple.com/documentation/appkit/nsscreen/auxiliarytopleftarea) 與右側區域的間距。`cameraFrame` 會辨識全域或 screen-local 輔助區座標；所有數值均為 point，不再乘 Retina backing scale。
+
+有瀏海時，收起窗口寬度等於量測的相機區，從螢幕頂部覆蓋安全區並向下多留 5pt，只在底部畫細提示；展開面板頂邊與相機區底邊相接。相機矩形不可得時，以安全區高度推算 140–220pt 備用寬度。有瀏海的備用值不影響無瀏海分支；後者保持 160×24pt 膠囊與既有位置。
 
 ### 狀態機
 
@@ -107,11 +114,19 @@ Store 在 App 層建立，主視窗與浮動面板共用。NSHostingView 只建�
 - Hover 展開使用 `orderFrontRegardless()`，不呼叫 activate 或 makeKey。
 - 手動叫出使用 `makeKeyAndOrderFront()`，預設釘選。
 - 原生 checkbox 與「移回待辦」按鈕接受 inactive panel 的 first mouse。
-- 展開／收起以透明度動畫處理；Reduce Motion 開啟時省略動畫。
-- `transition` generation 防止舊的 fade-out completion 把剛重新展開的面板關掉。
+- 展開以 0.52 秒向下移動並淡入；收起以 0.46 秒向上移動並淡出。Reduce Motion 開啟時省略兩者。
+- `transition` generation 與動畫取消機制共同防止舊 completion 把重新展開的面板關掉。
 - `NSApplication.didChangeScreenParametersNotification` 處理螢幕增減、解析度及安全區重排。
 
 UI 的 sheet、選單與文字輸入不要繞過保護邏輯自行 `orderOut`。新增關閉入口請呼叫 `TopPanel.collapse()`，它會先保存日記，失敗時保持展開並釘選。
+
+### 可中斷的滑動動畫
+
+`PanelSlideMotion` 是可測試的純插值：使用 smoothstep 曲線，從 `PanelPresentation(frame, opacity)` 移到目標。收回位移為 48–80pt，依相機安全區高度調整；不縮放內容，正常展開／收起期間不改窗口尺寸，避免日記與 TextEditor 重新排版。
+
+`PanelSlideAnimator` 只在轉場期間啟動 60Hz timer，結束／取消後停止。新動畫先取樣舊動畫目前的位置與透明度，取消舊完成回調，再從該位置接續；不重設回起始位置。
+
+`TopPanel.isRetracting` 與 `allowHoverResume` 區分自動收回及手動關閉。自動收回時，滑鼠返回仍可見面板或入口會立即接回展開動畫；Esc／收起按鈕則尊重原本「先離開入口再移回」規則。螢幕重排時會取消進行中的收回，再依新幾何放置入口。
 
 ## 5. 任務與重複事項模型
 
@@ -193,7 +208,7 @@ journal.undo(on: date, scope: .week)
 
 這是刻意保留的 legacy path。改名只改 App／module／bundle，不遷移資料夾。若將來要改到 NotchAgenda 路徑，必須另做有備份、可重試的遷移，不能直接改字串。
 
-`tasks.json` 為 `[TaskItem]`，`journal.json` 為 `[JournalEntry]`。Swift JSONEncoder 的 Date 預設是自 2001-01-01 起的秒數，不是 Unix epoch，也不是可直接顯示的當地時間。
+`tasks.json` 為 `[TaskItem]`，`journal.json` 為 `[JournalEntry]`，`preferences.json` 為語言／筆記本展示偏好物件。Swift JSONEncoder 的 Date 預設是自 2001-01-01 起的秒數，不是 Unix epoch，也不是可直接顯示的當地時間。
 
 任務欄位示意：
 
@@ -228,6 +243,20 @@ journal.undo(on: date, scope: .week)
 
 新增 Codable 欄位要優先使用 optional 或明確 decodeIfPresent，並新增舊檔 fixture 測試。不要讓升級將舊檔解碼成空清單後覆寫。
 
+### 語言與筆記本設定
+
+`TaskStore.preferences` 與 `JournalStore.preferences` 共用同一個 AppPreferences。正式檔案為同目錄的 `preferences.json`，獨立於事項／文字日記的復原快照。設定變更成功寫入後才更新可觀察狀態，儲存失敗不假裝切換成功。
+
+`NotebookPage` 使用穩定的 `day/week/month/anytime/calendar` ID，保留原本五個橫向分頁。`NotebookAppearance` 定義 cream/rose/leather/minimal，`NotebookPaper` 定義 ruled/grid/dotted/plain，兩者獨立保存。舊版 notebooks/covers/startsOnShelf 欄位忽略，缺少新欄位時預設 cream/ruled，語言保留。
+
+`NotebookAppearance.palette` 提供外表、內頁、文字、強調色與線條色；`NotebookCoverTrim` 繪製細框、縫線或極簡線條。`MacJournalView` 將 palette 和 paper 注入環境，`RuledPaper` 繪製內頁底紋，日記輸入區亦共用。新增外表時擴充 enum、palette、英文譯文；新增紙張時擴充 enum 及 RuledPaper。保持 View identity，避免外觀切換清掉輸入或當前頁面。
+
+設定檔例子：`{"language":"zh-Hant","appearance":"rose","paper":"dotted"}`。設定不會修改 tasks.json 或 journal.json。
+
+UI 字串使用 `preferences.text(key)`，數量使用 `preferences.format(key, count)`。English 譯文集中在 EnglishStrings；簡體以 Traditional-Simplified transform 加常用按鈕用語覆寫。新增 UI 文字需同步加入 English 對照，不能只新增繁體字面值。不要把使用者的 task.title 或日記 text 傳給翻譯函數。
+
+日期格式明確使用 `.locale(preferences.locale)`；SwiftUI 根 View 注入相同 locale，原生 NSViewRepresentable 按鈕在 updateNSView 中依 context.environment.locale 更新。切語言不重建整個 View identity，避免清掉草稿或閱讀位置。設定儲存後發布 AppPreferences.didChange，更新浮動面板的 native window title。
+
 ### 身分與偏好設定
 
 | 項目 | 值 |
@@ -236,9 +265,9 @@ journal.undo(on: date, scope: .week)
 | QA bundle | `com.colday.notchagenda.qa` |
 | Hover 設定 | UserDefaults `notchagenda.hoverEnabled`，預設 true |
 | Debug 資料覆寫 | `NOTCHAGENDA_DATA_FILE`，仍接受 `FLOWTASKS_DATA_FILE` 舊別名 |
-| iOS 原型 bundle／App Group | 保留 `com.example.flowtasks`／`group.com.example.flowtasks` 相容身分 |
+| iOS bundle／App Group | `com.colday.notchagenda`／`group.com.colday.notchagenda`；舊 iOS 原型身分不沿用，Mac 資料路徑不變 |
 
-QA bundle 的 LSEnvironment 指向 `.build/qa/tasks.json`，日記使用同目錄 `journal.json`。測試檔名覆寫只在 Debug 建置啟用。
+QA bundle 的 LSEnvironment 指向 `.build/qa/tasks.json`，日記使用同目錄 `journal.json`，設定為 `preferences.json`。測試檔名覆寫只在 Debug 建置啟用。
 
 ## 8. 如何開發各類功能
 
@@ -281,18 +310,21 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter Not
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter CompletionFlowTests
 ```
 
+- AppPreferencesTests：三語、字串格式、外表與內頁獨立保存、舊版偏好遷移、資料保留及設定檔錯誤保護。
+- NotebookPresentationTests：直接進入原版分頁、外觀切換保留輸入框與草稿、外觀／設定預覽；可用 NOTCHAGENDA_PREVIEW_DIR 輸出測試 PNG。
 - CheckboxTests：native 命中、首擊、完成列表轉移、移回待辦、錯誤還原、真實 TextEditor autosave／切頁。
 - CompletionFlowTests：重複往返不膨脹日誌、舊日誌整理。
 - PlanningTests：未來安排、週月界線、每日／週／月重複、閏月及月底。
 - JournalAndTrashTests：刪除／還原、日記分期、備份式重讀、草稿保護、獨立復原。
 - TaskStoreTests：批量輸入、保存、相容與損壞檔保護。
-- NotchHoverTests：dwell、離開 grace period、保護條件、Esc 抑制、負座標／無瀏海／安全區幾何。
+- NotchHoverTests：dwell、離開 grace period、保護條件、Esc 抑制、相機量測、不同瀏海寬度、無瀏海尺寸保持、全域／local 負座標及備用幾何。
+- PanelSlideTests：位移方向、緩入緩出、固定尺寸、中途反向位置連續、Reduce Motion 零時長，以及舊完成回調取消。
 
 測試使用 temporary directories，不使用正式資料。UI 整合視窗不會前置搶走正在操作的主程式。
 
 實機 QA 另檢查：
 
-1. 瀏海及無瀏海螢幕的頂部中心停留、移入面板與移開收起。
+1. 三語切換、外表／內頁獨立切換與草稿保留，以及瀏海及無瀏海螢幕的頂部中心停留、移入面板與移開收起。
 2. Hover 不搶焦點；點入文字框後能正常輸入中文。
 3. 選單、日期 picker、sheet、釘選、拖動及 Esc。
 4. 接上／拔除外接螢幕、不同縮放、負座標及休眠喚醒。
@@ -305,6 +337,10 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test --filter Com
 
 Swift package／module 名稱為 NotchAgenda，source 為 `Sources/NotchAgenda`，tests 為 `Tests/NotchAgendaTests`。`scripts/run-mac.sh` 建立 App Info.plist，管理目前版本與 QA bundle。
 
-iOS 原型可用 `xcodegen generate` 建立 `NotchAgenda.xcodeproj`，需自行設定 team、App Group 及裝置簽署。它尚未包含 Mac hover 體驗，亦未配套全部新增功能。
+iOS／iPadOS 建置、測試、封存與 TestFlight 發佈步驟見 [IOS_RELEASE.md](IOS_RELEASE.md)。`project.yml` 定義 App、Widget、共用單元測試與 iOS 介面測試。`scripts/build-ios.sh` 產生專案並呼叫 Xcode；生成的 xcodeproj 不提交，Config、Resources 與 project.yml 才是來源。
+
+`TaskStore.widgetOccurrences(on:)` 共用日／週／月／待完成的當期查詢，Widget 不自行用 completed 布林過濾重複事項。Widget 為唯讀，App 使用原子寫入並要求重載 timeline；系統決定實際更新時機。iOS App、Widget 共用 group.com.colday.notchagenda 的 JSON，未加入網路同步。AppIcon 與 PrivacyInfo.xcprivacy 位於 Resources。
+
+UI 測試以 `-ui-testing` 與 UUID 型 NOTCHAGENDA_TEST_STORE 選用獨立暫存目錄，僅 Debug 生效。可驗證重啟保存，不接觸使用者資料。`MobileFlowTests` 驗證批量輸入、完成／移回待辦、刪除／還原、每日重複及設定／日記重啟保存。
 
 目前本機 bundle 並未完成 Developer ID 簽署、公證或自動更新。正式發佈前需另做 signing、notarization、圖示、安裝／更新流程及實機驗證；不要把本機 Debug bundle 當作已驗證的正式發行版。

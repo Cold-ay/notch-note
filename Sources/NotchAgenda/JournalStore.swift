@@ -20,11 +20,13 @@ struct JournalEntry: Identifiable, Codable, Equatable {
     private let now: () -> Date
     private let calendar: Calendar
     private var loadFailed = false
+    let preferences: AppPreferences
 
-    init(file: URL, now: @escaping () -> Date = Date.init, calendar: Calendar = .taskCalendar) {
+    init(file: URL, now: @escaping () -> Date = Date.init, calendar: Calendar = .taskCalendar, preferences: AppPreferences? = nil) {
         self.file = file
         self.now = now
         self.calendar = calendar
+        self.preferences = preferences ?? AppPreferences(file: file.deletingLastPathComponent().appendingPathComponent("preferences.json"))
         do {
             if FileManager.default.fileExists(atPath: file.path) {
                 entries = try JSONDecoder().decode([JournalEntry].self, from: Data(contentsOf: file))

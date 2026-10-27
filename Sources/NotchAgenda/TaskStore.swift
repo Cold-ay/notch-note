@@ -119,6 +119,7 @@ extension Calendar {
     private let now: () -> Date
     let calendar: Calendar
     let journal: JournalStore
+    let preferences: AppPreferences
     private var loadFailed = false
     var canUndo: Bool { previous != nil }
     var activeTasks: [TaskItem] { tasks.filter { $0.deletedAt == nil } }
@@ -134,7 +135,8 @@ extension Calendar {
         self.file = file ?? Self.storageURL
         self.now = now
         self.calendar = calendar
-        journal = JournalStore(file: self.file.deletingLastPathComponent().appendingPathComponent("journal.json"), now: now, calendar: calendar)
+        preferences = AppPreferences(file: self.file.deletingLastPathComponent().appendingPathComponent("preferences.json"))
+        journal = JournalStore(file: self.file.deletingLastPathComponent().appendingPathComponent("journal.json"), now: now, calendar: calendar, preferences: preferences)
         do {
             if FileManager.default.fileExists(atPath: self.file.path) {
                 tasks = try JSONDecoder().decode([TaskItem].self, from: Data(contentsOf: self.file))
@@ -147,15 +149,23 @@ extension Calendar {
 
     static var storageURL: URL {
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing"),
+           let token = ProcessInfo.processInfo.environment["NOTCHAGENDA_TEST_STORE"], UUID(uuidString: token) != nil {
+            return FileManager.default.temporaryDirectory.appendingPathComponent("NotchAgendaUITests").appendingPathComponent(token).appendingPathComponent("tasks.json")
+        }
         // The QA app uses an isolated file and never touches the user's journal.
         if let path = (ProcessInfo.processInfo.environment["NOTCHAGENDA_DATA_FILE"] ?? ProcessInfo.processInfo.environment["FLOWTASKS_DATA_FILE"]) { return URL(fileURLWithPath: path) }
         #endif
         #if os(iOS)
-        let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.example.flowtasks") ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.colday.notchagenda") ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         #else
         let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("FlowTasks")
         #endif
         return root.appendingPathComponent("tasks.json")
+    }
+
+    func widgetOccurrences(on date: Date) -> [TaskOccurrence] {
+        TaskScope.allCases.flatMap { pendingOccurrences(on: date, scope: $0, carryOver: true) }
     }
 
     func interval(for date: Date, scope: TaskScope) -> DateInterval {
