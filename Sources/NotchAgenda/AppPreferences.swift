@@ -70,16 +70,32 @@ enum NotebookPaper: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum HoverSpeed: String, Codable, CaseIterable, Identifiable {
+    case fast, medium, slow
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .fast: "快"; case .medium: "中"; case .slow: "慢" }
+    }
+    var openingDuration: TimeInterval {
+        switch self { case .fast: 0.26; case .medium: 0.52; case .slow: 0.90 }
+    }
+    var closingDuration: TimeInterval {
+        switch self { case .fast: 0.23; case .medium: 0.46; case .slow: 0.80 }
+    }
+}
+
 private struct PreferenceDocument: Codable, Equatable {
     var language = AppLanguage.traditionalChinese
     var appearance = NotebookAppearance.cream
     var paper = NotebookPaper.ruled
+    var hoverSpeed = HoverSpeed.medium
     init() {}
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         language = try values.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .traditionalChinese
         appearance = try values.decodeIfPresent(NotebookAppearance.self, forKey: .appearance) ?? .cream
         paper = try values.decodeIfPresent(NotebookPaper.self, forKey: .paper) ?? .ruled
+        hoverSpeed = try values.decodeIfPresent(HoverSpeed.self, forKey: .hoverSpeed) ?? .medium
     }
 }
 
@@ -93,6 +109,7 @@ private struct PreferenceDocument: Codable, Equatable {
     var locale: Locale { document.language.locale }
     var appearance: NotebookAppearance { document.appearance }
     var paper: NotebookPaper { document.paper }
+    var hoverSpeed: HoverSpeed { document.hoverSpeed }
     var weekdaySymbols: [String] { language == .english ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["一", "二", "三", "四", "五", "六", "日"] }
 
     init(file: URL) {
@@ -117,6 +134,9 @@ private struct PreferenceDocument: Codable, Equatable {
     }
     @discardableResult func setPaper(_ paper: NotebookPaper) -> Bool {
         var next = document; next.paper = paper; return save(next)
+    }
+    @discardableResult func setHoverSpeed(_ speed: HoverSpeed) -> Bool {
+        var next = document; next.hoverSpeed = speed; return save(next)
     }
     private func save(_ next: PreferenceDocument) -> Bool {
         guard !loadFailed else { errorMessage = "未能讀取設定，已保留原檔。"; return false }

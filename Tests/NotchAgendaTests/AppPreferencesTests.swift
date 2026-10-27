@@ -30,6 +30,23 @@ final class AppPreferencesTests: XCTestCase {
         }
     }
 
+    @MainActor func testHoverSpeedMigratesAndPersistsWithoutChangingOtherPreferences() throws {
+        try withPreferences { _, file in
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(#"{"language":"en","appearance":"rose","paper":"dotted"}"#.utf8).write(to: file)
+            let preferences = AppPreferences(file: file)
+            XCTAssertEqual(preferences.hoverSpeed, .medium)
+            for speed in HoverSpeed.allCases {
+                XCTAssertTrue(preferences.setHoverSpeed(speed))
+                let reloaded = AppPreferences(file: file)
+                XCTAssertEqual(reloaded.hoverSpeed, speed)
+                XCTAssertEqual(reloaded.language, .english)
+                XCTAssertEqual(reloaded.appearance, .rose)
+                XCTAssertEqual(reloaded.paper, .dotted)
+            }
+        }
+    }
+
     @MainActor func testAppearanceChangesLeaveUserDataUntouched() throws {
         try withPreferences { preferences, file in
             let store = TaskStore(file: file.deletingLastPathComponent().appendingPathComponent("tasks.json"))

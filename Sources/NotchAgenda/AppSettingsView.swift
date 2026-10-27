@@ -41,6 +41,17 @@ struct AppSettingsView: View {
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.85))
                     }.padding(14).foregroundStyle(.white)
                         .background(Color(red: 0.17, green: 0.19, blue: 0.23), in: RoundedRectangle(cornerRadius: 12))
+                    #if os(macOS)
+                    Divider()
+                    VStack(alignment: .leading, spacing: 9) {
+                        Text(preferences.text("面板滑動速度")).font(.headline)
+                        Picker(preferences.text("面板滑動速度"), selection: Binding(get: { preferences.hoverSpeed }, set: { preferences.setHoverSpeed($0) })) {
+                            ForEach(HoverSpeed.allCases) { Text(preferences.text($0.title)).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("settings.hoverSpeed")
+                        Text(preferences.text("控制展開與收起動畫；滑鼠停留時間不變。"))
+                            .font(.system(size: 11)).foregroundStyle(paper.faint)
+                    }
+                    #endif
                     Divider()
                     Text(preferences.text("筆記本外表")).font(.headline)
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {

@@ -8,8 +8,6 @@ struct PanelPresentation: Equatable {
 
 /// A position/opacity transition: equal-sized endpoints avoid journal reflow.
 struct PanelSlideMotion {
-    static let openingDuration: TimeInterval = 0.52
-    static let closingDuration: TimeInterval = 0.46
     let from: PanelPresentation
     let to: PanelPresentation
     let startedAt: TimeInterval

@@ -243,6 +243,10 @@ journal.undo(on: date, scope: .week)
 
 新增 Codable 欄位要優先使用 optional 或明確 decodeIfPresent，並新增舊檔 fixture 測試。不要讓升級將舊檔解碼成空清單後覆寫。
 
+### Mac 滑動速度偏好
+
+`HoverSpeed` 於 AppPreferences 定義 fast/medium/slow，以及各自 openingDuration／closingDuration。`preferences.json` 的 hoverSpeed 缺省時解碼為 medium，保留既有 0.52／0.46 秒節奏。TopPanel 每次開始動畫時讀取當前偏好，不重建內容，也不改 HoverPolicy 的停留／離開延遲。減少動態效果仍由原有分支優先處理。Mac 設定以 segmented picker 顯示，iOS 不顯示。
+
 ### 語言與筆記本設定
 
 `TaskStore.preferences` 與 `JournalStore.preferences` 共用同一個 AppPreferences。正式檔案為同目錄的 `preferences.json`，獨立於事項／文字日記的復原快照。設定變更成功寫入後才更新可觀察狀態，儲存失敗不假裝切換成功。

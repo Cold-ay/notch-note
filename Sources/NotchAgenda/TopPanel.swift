@@ -139,7 +139,7 @@ private final class LauncherPanel: NSPanel {
         let safeTop = NSScreen.screens.first(where: { screenID($0) == activeScreenID })?.safeAreaInsets.top ?? 0
         let current = slideAnimator.presentation(of: panel)
         let destination = PanelPresentation(frame: PanelSlideMotion.retractedFrame(from: current.frame, safeTop: safeTop), opacity: 0)
-        slideAnimator.animate(panel, to: destination, duration: PanelSlideMotion.closingDuration, completion: finish)
+        slideAnimator.animate(panel, to: destination, duration: (store?.preferences.hoverSpeed ?? .medium).closingDuration, completion: finish)
     }
 
     private func updateTimer() {
@@ -228,7 +228,7 @@ private final class LauncherPanel: NSPanel {
         if focus { window.makeKeyAndOrderFront(nil) }
         else { window.orderFrontRegardless() }
         if !reduceMotion && initial != destination {
-            slideAnimator.animate(window, to: destination, duration: PanelSlideMotion.openingDuration)
+            slideAnimator.animate(window, to: destination, duration: store.preferences.hoverSpeed.openingDuration)
         }
     }
 

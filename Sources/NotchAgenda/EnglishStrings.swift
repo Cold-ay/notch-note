@@ -4,6 +4,8 @@ import Foundation
 enum EnglishStrings {
     static let errorPrefixes = ["未能讀取待辦，已停止寫入以保留原檔：", "未能讀取手記，已保留原檔並停止寫入：", "未能儲存手記，文字已保留：", "未能儲存待辦：", "未能儲存設定："]
     static let values: [String: String] = [
+        "面板滑動速度": "Panel slide speed", "快": "Fast", "中": "Medium", "慢": "Slow",
+        "控制展開與收起動畫；滑鼠停留時間不變。": "Controls opening and closing animations. Hover delay stays the same.",
         "刪除": "Delete", "寫下下一件事": "Write what comes next", "目標類型": "Goal type", "移到隊尾": "Move to end",
         "已完成": "Done", "完成事項": "Complete task", "復原上一步": "Undo last step", "事項選項": "Task options",
         "批量新增待辦，每行一件": "Add tasks, one per line", "儲存提示": "Save notice", "知道了": "OK",
