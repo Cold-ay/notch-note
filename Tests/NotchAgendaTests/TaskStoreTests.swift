@@ -2,7 +2,7 @@ import XCTest
 #if os(macOS)
 import AppKit
 #endif
-@testable import FlowTasks
+@testable import NotchAgenda
 
 final class TaskStoreTests: XCTestCase {
     @MainActor func testBatchQueueUndoAndPersistence() throws {
@@ -37,7 +37,7 @@ final class TaskStoreTests: XCTestCase {
         XCTAssertTrue(store.tasks.isEmpty)
     }
 
-    @MainActor func testJournalKeepsCompletionAndReopeningAcrossLaunches() throws {
+    @MainActor func testCompletionSurvivesReturningToPendingWithoutExtraLogs() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appendingPathComponent("tasks.json")
@@ -55,14 +55,16 @@ final class TaskStoreTests: XCTestCase {
         store.complete(task)
         XCTAssertFalse(try XCTUnwrap(store.tasks.first).completed)
         XCTAssertNil(store.tasks.first?.completedAt)
-        XCTAssertEqual(store.tasks.first?.records.map(\.action), [.completed, .reopened])
+        XCTAssertEqual(store.tasks.first?.records.map(\.action), [.completed])
         XCTAssertEqual(store.tasks.first?.records.first?.timestamp, completionTime)
         store.complete(task)
-        XCTAssertEqual(store.tasks.first?.records.count, 3)
+        XCTAssertEqual(store.tasks.first?.records.count, 1)
+        XCTAssertEqual(store.tasks.first?.records.first?.timestamp, now)
         let reloaded = TaskStore(file: file)
         XCTAssertEqual(reloaded.tasks, store.tasks)
         store.undo()
-        XCTAssertEqual(store.tasks.first?.records.count, 2)
+        XCTAssertEqual(store.tasks.first?.records.count, 1)
+        XCTAssertEqual(store.tasks.first?.records.first?.timestamp, completionTime)
         XCTAssertFalse(try XCTUnwrap(store.tasks.first).completed)
     }
 

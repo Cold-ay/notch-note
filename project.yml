@@ -1,4 +1,4 @@
-name: FlowTasks
+name: NotchAgenda
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -8,11 +8,12 @@ settings:
   base:
     SWIFT_VERSION: '6.0'
     GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: NotchAgenda
 targets:
-  FlowTasks-iOS:
+  NotchAgenda-iOS:
     type: application
     platform: iOS
-    sources: [Sources/FlowTasks]
+    sources: [Sources/NotchAgenda]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.flowtasks
@@ -24,8 +25,8 @@ targets:
       properties:
         com.apple.security.application-groups: [group.com.example.flowtasks]
     dependencies:
-      - target: FlowTasksWidget
-  FlowTasksWidget:
+      - target: NotchAgendaWidget
+  NotchAgendaWidget:
     type: app-extension
     platform: iOS
     sources: [Widgets]
@@ -41,10 +42,10 @@ targets:
       path: Config/Widget.entitlements
       properties:
         com.apple.security.application-groups: [group.com.example.flowtasks]
-  FlowTasks-macOS:
+  NotchAgenda-macOS:
     type: application
     platform: macOS
-    sources: [Sources/FlowTasks]
+    sources: [Sources/NotchAgenda]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.flowtasks.mac
+        PRODUCT_BUNDLE_IDENTIFIER: com.colday.notchagenda.mac

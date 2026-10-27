@@ -9,7 +9,7 @@ struct ContentView: View {
     @State private var newDate = Date()
     private let accent = Color(red: 0.30, green: 0.40, blue: 0.93)
     var visible: [TaskItem] {
-        if section == "已完成" { return store.tasks.filter(\.completed) }
+        if section == "已完成" { return store.activeTasks.filter(\.completed) }
         if section == "日曆" { return store.pending.filter { task in task.date.map { Calendar.current.isDate($0, inSameDayAs: selectedDate) } ?? false } }
         return store.pending
     }
@@ -53,7 +53,7 @@ struct ContentView: View {
                     }
                 }.padding(24).frame(maxWidth: 760)
             }
-            .navigationTitle("FlowTasks")
+            .navigationTitle("NotchAgenda")
             .tint(accent)
             .alert("儲存提示", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
                 Button("知道了") { store.errorMessage = nil }

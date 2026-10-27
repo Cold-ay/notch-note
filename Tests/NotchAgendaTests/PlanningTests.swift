@@ -1,5 +1,5 @@
 import XCTest
-@testable import FlowTasks
+@testable import NotchAgenda
 
 private var planningCalendar: Calendar {
     var value = Calendar(identifier: .gregorian)
@@ -67,7 +67,7 @@ final class PlanningTests: XCTestCase {
             XCTAssertFalse(try XCTUnwrap(reloaded.occurrences(on: day(2026, 10, 28), scope: .day).first).isCompleted)
             XCTAssertTrue(try XCTUnwrap(reloaded.occurrences(on: day(2026, 10, 27), scope: .day).first).isCompleted)
             store.setCompleted(today.task, occurrenceDate: today.date, completed: false)
-            XCTAssertEqual(store.tasks.first?.records.map(\.action), [.completed, .reopened])
+            XCTAssertEqual(store.tasks.first?.records.map(\.action), [.completed])
             XCTAssertFalse(try XCTUnwrap(store.occurrences(on: day(2026, 10, 27), scope: .day).first).isCompleted)
         }
     }
@@ -84,7 +84,7 @@ final class PlanningTests: XCTestCase {
             XCTAssertEqual(store.tasks.first?.records.count, 1)
             store.setCompleted(before.task, occurrenceDate: before.date, completed: false)
             store.setCompleted(before.task, occurrenceDate: before.date, completed: false)
-            XCTAssertEqual(store.tasks.first?.records.count, 2)
+            XCTAssertEqual(store.tasks.first?.records.count, 1)
         }
     }
 

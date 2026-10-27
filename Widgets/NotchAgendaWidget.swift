@@ -6,6 +6,7 @@ struct WidgetTask: Decodable, Identifiable {
     let title: String
     let date: Date?
     let completed: Bool
+    var deletedAt: Date? = nil
 }
 struct TaskEntry: TimelineEntry {
     let date: Date
@@ -21,7 +22,7 @@ struct Provider: TimelineProvider {
         let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.example.flowtasks")
         let data = root.flatMap { try? Data(contentsOf: $0.appendingPathComponent("tasks.json")) }
         let tasks = data.flatMap { try? JSONDecoder().decode([WidgetTask].self, from: $0) } ?? []
-        return TaskEntry(date: .now, tasks: tasks.filter { !$0.completed })
+        return TaskEntry(date: .now, tasks: tasks.filter { !$0.completed && $0.deletedAt == nil })
     }
 }
 struct WidgetView: View {
@@ -30,7 +31,7 @@ struct WidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("FlowTasks").font(.caption.bold()).foregroundStyle(.indigo)
+                Text("NotchAgenda").font(.caption.bold()).foregroundStyle(.indigo)
                 Spacer()
                 Text("\(entry.tasks.count)").font(.caption.bold())
             }
@@ -46,8 +47,8 @@ struct WidgetView: View {
         }.containerBackground(.fill.tertiary, for: .widget)
     }
 }
-@main struct FlowTasksWidget: Widget {
-    let kind = "FlowTasksWidget"
+@main struct NotchAgendaWidget: Widget {
+    let kind = "NotchAgendaWidget"
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in WidgetView(entry: entry) }
             .configurationDisplayName("下一件待辦")

@@ -3,7 +3,7 @@ import AppKit
 import CoreText
 import SwiftUI
 
-private enum Paper {
+enum Paper {
     static let sheet = Color(red: 0.98, green: 0.96, blue: 0.91)
     static let ink = Color(red: 0.25, green: 0.25, blue: 0.22)
     static let faint = Color(red: 0.49, green: 0.47, blue: 0.41)
@@ -12,7 +12,7 @@ private enum Paper {
 }
 
 private enum JournalPage: String, CaseIterable, Identifiable {
-    case day = "日記", week = "週目標", month = "月目標", anytime = "待完成", calendar = "日曆"
+    case day = "每日", week = "週目標", month = "月目標", anytime = "待完成", calendar = "日曆"
     var id: String { rawValue }
     var scope: TaskScope {
         switch self { case .day, .calendar: .day; case .week: .week; case .month: .month; case .anytime: .anytime }
@@ -21,6 +21,8 @@ private enum JournalPage: String, CaseIterable, Identifiable {
         switch scope { case .day: .day; case .week: .week; case .month: .month; case .anytime: .anytime }
     }
 }
+
+enum JournalContent: Hashable { case tasks, completed, diary }
 
 struct MacJournalView: View {
     @Bindable var store: TaskStore
@@ -35,15 +37,24 @@ struct MacJournalView: View {
     @State private var repetition = TaskRepeat.none
     @State private var choosingDate = false
     @State private var editing: TaskItem?
-    @State private var showHistory = false
+    @State private var showTrash = false
+    @State private var content = JournalContent.tasks
     @FocusState private var writing: Bool
     private var isToday: Bool { store.calendar.isDateInToday(page) }
-    private var entries: [TaskOccurrence] {
+    private var allEntries: [TaskOccurrence] {
         store.occurrences(on: page, scope: section.scope, carryOver: isToday && section != .calendar)
     }
-    private var records: [TaskRecord] {
-        if section == .anytime { return store.tasks.filter { $0.scope == .anytime }.flatMap(\.records).sorted { $0.timestamp < $1.timestamp } }
-        return store.records(on: page, scope: section == .week || section == .month ? section.scope : nil)
+    private var entries: [TaskOccurrence] {
+        content == .completed
+            ? store.completedOccurrences(on: page, scope: section.scope, carryOver: isToday && section != .calendar)
+            : store.pendingOccurrences(on: page, scope: section.scope, carryOver: isToday && section != .calendar)
+    }
+
+    init(store: TaskStore, floating: Bool = false, dismiss: (() -> Void)? = nil, initialContent: JournalContent = .tasks) {
+        self.store = store
+        self.floating = floating
+        self.dismiss = dismiss
+        _content = State(initialValue: initialContent)
     }
     private var inputCount: Int { input.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count }
     private var heading: String {
@@ -59,29 +70,32 @@ struct MacJournalView: View {
         VStack(spacing: 0) {
             header
             navigation
+            Picker("頁面內容", selection: $content) {
+                Text("待辦事項").tag(JournalContent.tasks)
+                Text("已完成（\(allEntries.filter(\.isCompleted).count)）").tag(JournalContent.completed)
+                if section != .anytime { Text("寫日記").tag(JournalContent.diary) }
+            }.pickerStyle(.segmented).padding(.horizontal, 24).padding(.vertical, 10)
             Rectangle().fill(Paper.line.opacity(0.6)).frame(height: 1)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if section == .calendar {
                         JournalCalendar(date: $page, store: store).padding(.horizontal, 24).padding(.top, 12)
                     }
-                    sectionHeading(heading, detail: "\(entries.filter(\.isCompleted).count) / \(entries.count)")
-                    if entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text(section == .anytime ? "先收下念頭，日子可以慢慢選。" : "這一頁，還有空白。").font(.system(size: 15, design: .serif))
-                            Text("在下面寫下事項，再選擇日期或目標類型。").font(.system(size: 11)).foregroundStyle(Paper.faint)
-                        }.padding(.leading, 38).padding(.trailing, 24).padding(.vertical, 18)
-                    }
-                    // Completed rows stay in place: no moving target beneath a second click.
-                    ForEach(entries) { entry in
-                        JournalTaskRow(entry: entry, store: store, edit: { editing = entry.task })
-                    }
-                    if !records.isEmpty {
-                        DisclosureGroup(isExpanded: $showHistory) {
-                            ForEach(records) { record in JournalRecordRow(record: record) }
-                        } label: {
-                            Text("日記紀錄 · \(records.count)").font(.system(size: 11, weight: .medium)).foregroundStyle(Paper.faint)
-                        }.padding(.horizontal, 24).padding(.top, 22)
+                    if content == .diary && section != .anytime {
+                        JournalEditor(journal: store.journal, date: page, scope: section.scope)
+                            .id(store.journal.key(on: page, scope: section.scope))
+                            .padding(24)
+                    } else {
+                        sectionHeading(content == .completed ? "這一頁，已完成的事" : heading, detail: "\(allEntries.filter(\.isCompleted).count) / \(allEntries.count)")
+                        if entries.isEmpty {
+                            VStack(alignment: .leading, spacing: 7) {
+                                Text(content == .completed ? "還沒有已完成事項。" : "這一頁的待辦已清空。").font(.system(size: 15, design: .serif))
+                                Text(content == .completed ? "完成事項會收在這裡；需要再做時，移回待辦即可。" : "寫下下一件事，或切到「已完成」查看成果。").font(.system(size: 11)).foregroundStyle(Paper.faint)
+                            }.padding(.leading, 38).padding(.trailing, 24).padding(.vertical, 18)
+                        }
+                        ForEach(entries) { entry in
+                            JournalTaskRow(entry: entry, store: store, edit: { editing = entry.task })
+                        }
                     }
                 }.padding(.bottom, 22)
             }
@@ -93,15 +107,17 @@ struct MacJournalView: View {
                     Button("關閉") { store.errorMessage = nil }
                 }.padding(12).foregroundStyle(Color.red).background(Paper.sheet)
             }
-            composer
+            if content == .tasks { composer }
         }
         .foregroundStyle(Paper.ink).background(Paper.sheet)
         .clipShape(RoundedRectangle(cornerRadius: floating ? 20 : 0))
         .overlay { if floating { RoundedRectangle(cornerRadius: 20).strokeBorder(Paper.line.opacity(0.65), lineWidth: 1).allowsHitTesting(false) } }
         .tint(Paper.accent).preferredColorScheme(.light)
-        .frame(minWidth: 400, minHeight: 600)
+        .frame(minWidth: 400, minHeight: 520)
         .sheet(item: $editing) { task in TaskPlanEditor(task: task, store: store) }
+        .sheet(isPresented: $showTrash) { TaskTrashView(store: store) }
         .onChange(of: section) { _, newSection in
+            if newSection == .anytime && content == .diary { content = .tasks }
             draftScope = newSection.scope
             if !draftScope.repeats.contains(repetition) { repetition = .none }
             plannedDate = page
@@ -124,7 +140,7 @@ struct MacJournalView: View {
                         HStack(spacing: 3) {
                             Text(item.rawValue)
                             if item == .anytime {
-                                let count = store.tasks.filter { $0.scope == .anytime && !$0.completed }.count
+                                let count = store.activeTasks.filter { $0.scope == .anytime && !$0.completed }.count
                                 if count > 0 { Text("\(count)").font(.system(size: 9, design: .monospaced)) }
                             }
                         }.font(.system(size: 11, weight: item == section ? .semibold : .regular))
@@ -140,8 +156,11 @@ struct MacJournalView: View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 8) {
                 Image(systemName: "book.closed").font(.system(size: 12))
-                Text("FLOWTASKS / 日常手記").font(.system(size: 10, weight: .medium, design: .monospaced)).tracking(1.2)
+                Text("NOTCHAGENDA / 日常手記").font(.system(size: 10, weight: .medium, design: .monospaced)).tracking(1.2)
                 Spacer()
+                Button { showTrash = true } label: { Image(systemName: "trash").font(.system(size: 12)).frame(width: 26, height: 26) }
+                    .buttonStyle(.plain).help("垃圾桶 · \(store.deletedTasks.count) 件；可還原")
+                    .accessibilityLabel("垃圾桶，\(store.deletedTasks.count) 件已刪除事項")
                 if floating {
                     Capsule().fill(Paper.faint.opacity(0.3)).frame(width: 30, height: 3)
                         .frame(width: 52, height: 22).overlay { JournalDragHandle() }.help("拖動面板")
@@ -173,7 +192,7 @@ struct MacJournalView: View {
             }
             HStack(spacing: 6) {
                 Circle().fill(Paper.accent).frame(width: 5, height: 5)
-                Text(section == .anytime ? "暫時沒有期限，仍然記在心上。" : "\(entries.filter { !$0.isCompleted }.count) 件待完成 · 劃過的事，留在這一頁。")
+                Text(section == .anytime ? "暫時沒有期限，仍然記在心上。" : "\(allEntries.filter { !$0.isCompleted }.count) 件待完成 · 劃過的事，留在這一頁。")
                 Spacer(minLength: 0)
                 if !isToday && section != .anytime { Button("今天") { page = Date() }.buttonStyle(.plain).foregroundStyle(Paper.accent) }
             }.font(.system(size: 10)).foregroundStyle(Paper.faint)
@@ -289,7 +308,7 @@ struct JournalCheckbox: NSViewRepresentable {
         button.state = completed ? .on : .off
         button.setAccessibilityLabel(label)
         button.setAccessibilityIdentifier("journal.checkbox")
-        button.toolTip = completed ? "重新開啟，保留原本紀錄" : "完成，留下鉛筆筆跡"
+        button.toolTip = "完成並移到已完成列表"
     }
     @MainActor final class Coordinator: NSObject {
         var action: (Bool) -> Bool
@@ -309,6 +328,32 @@ final class FirstClickCheckboxButton: NSButton {
     }
 }
 
+struct ReturnToPendingButton: NSViewRepresentable {
+    var label: String
+    var action: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+    func makeNSView(context: Context) -> FirstClickCheckboxButton {
+        let button = FirstClickCheckboxButton()
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.title = "移回待辦"
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.pressed)
+        return button
+    }
+    func updateNSView(_ button: FirstClickCheckboxButton, context: Context) {
+        context.coordinator.action = action
+        button.setAccessibilityLabel(label)
+        button.setAccessibilityIdentifier("journal.returnToPending")
+    }
+    @MainActor final class Coordinator: NSObject {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+        @objc func pressed() { action() }
+    }
+}
+
 private struct JournalTaskRow: View {
     let entry: TaskOccurrence
     let store: TaskStore
@@ -316,24 +361,42 @@ private struct JournalTaskRow: View {
     @State private var dragOffset: CGFloat = 0
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
-            JournalCheckbox(completed: entry.isCompleted, label: (entry.isCompleted ? "重新開啟 " : "完成 ") + entry.task.title) { target in
-                store.setCompleted(entry.task, occurrenceDate: entry.date, completed: target)
-            }.frame(width: 32, height: 32).padding(.top, -5)
+            if entry.isCompleted {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Paper.faint).frame(width: 32, height: 32).padding(.top, -5)
+            } else {
+                JournalCheckbox(completed: false, label: "完成 " + entry.task.title) { target in
+                    target && store.setCompleted(entry.task, occurrenceDate: entry.date, completed: true)
+                }.frame(width: 32, height: 32).padding(.top, -5)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 if entry.isCompleted { PencilTitle(title: entry.task.title) }
                 else { Text(entry.task.title).font(.system(size: 15, design: .serif)).lineSpacing(5).fixedSize(horizontal: false, vertical: true) }
                 Text(detail).font(.system(size: 10)).foregroundStyle(Paper.faint)
+                if entry.isCompleted {
+                    ReturnToPendingButton(label: "移回待辦 " + entry.task.title) { store.returnToPending(entry) }
+                        .frame(width: 86, height: 26)
+                }
             }.frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 5) {
-                Menu {
-                    if entry.task.recurrence == .none {
-                        Button("安排日期／改成目標／設定重複", action: edit)
-                    } else if entry.task.repeatEnd == nil {
-                        Button("本期後停止重複，保留紀錄") { store.stopRepeating(entry.task) }
-                    }
-                    Button("移到清單尾端") { store.later(entry.task) }
-                } label: { Image(systemName: "ellipsis").frame(width: 22, height: 20) }
-                    .menuStyle(.borderlessButton).fixedSize().help("事項設定").accessibilityLabel("設定 \(entry.task.title)")
+                HStack(spacing: 3) {
+                    Menu {
+                        Button(entry.isCompleted ? "移回待辦" : "標記完成") {
+                            store.setCompleted(entry.task, occurrenceDate: entry.date, completed: !entry.isCompleted)
+                        }
+                        if entry.task.recurrence == .none {
+                            Button("安排日期／改成目標／設定重複", action: edit)
+                        } else if entry.task.repeatEnd == nil {
+                            Button("本期後停止重複，保留紀錄") { store.stopRepeating(entry.task) }
+                        }
+                        Button("移到清單尾端") { store.later(entry.task) }
+                        Divider()
+                        Button("刪除事項", role: .destructive) { store.delete(entry.task) }
+                    } label: { Image(systemName: "ellipsis").frame(width: 22, height: 20) }
+                        .menuStyle(.borderlessButton).fixedSize().help("事項設定").accessibilityLabel("設定 \(entry.task.title)")
+                    Button { store.delete(entry.task) } label: { Image(systemName: "trash").font(.system(size: 11)).frame(width: 24, height: 24) }
+                        .buttonStyle(.plain).help(entry.task.recurrence == .none ? "刪除事項；可從垃圾桶還原" : "刪除整個重複系列；可從垃圾桶還原")
+                        .accessibilityLabel("刪除 \(entry.task.title)")
+                }
                 Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(Paper.faint.opacity(0.6))
                     .frame(width: 24, height: 18).contentShape(Rectangle()).help("只在此把手拖動：右滑完成，左滑移到隊尾")
                     .gesture(DragGesture(minimumDistance: 20).onChanged { value in
@@ -362,18 +425,6 @@ private struct JournalTaskRow: View {
             else { parts.append("舊版已完成 · 未記錄時間") }
         }
         return parts.joined(separator: " · ")
-    }
-}
-
-private struct JournalRecordRow: View {
-    let record: TaskRecord
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if record.action == .completed { PencilTitle(title: record.title) }
-            else { Text(record.title).font(.system(size: 14, design: .serif)).foregroundStyle(Paper.faint) }
-            Text(record.timestamp.formatted(.dateTime.month().day().hour().minute()) + (record.action == .completed ? " 完成" : " 重新開啟"))
-                .font(.system(size: 10)).foregroundStyle(Paper.faint)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
     }
 }
 

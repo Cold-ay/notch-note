@@ -39,6 +39,8 @@ struct TaskItem: Identifiable, Codable, Equatable {
     var scope: TaskScope
     var recurrence: TaskRepeat
     var repeatEnd: Date?
+    var deletedAt: Date?
+    var pendingOccurrences: [Date] = []
 
     init(title: String, date: Date? = nil, createdAt: Date = Date(), scope: TaskScope = .anytime, recurrence: TaskRepeat = .none) {
         self.title = title
@@ -61,11 +63,29 @@ struct TaskItem: Identifiable, Codable, Equatable {
         scope = try values.decodeIfPresent(TaskScope.self, forKey: .scope) ?? (date == nil ? .anytime : .day)
         recurrence = try values.decodeIfPresent(TaskRepeat.self, forKey: .recurrence) ?? .none
         repeatEnd = try values.decodeIfPresent(Date.self, forKey: .repeatEnd)
+        deletedAt = try values.decodeIfPresent(Date.self, forKey: .deletedAt)
+        if let pending = try values.decodeIfPresent([Date].self, forKey: .pendingOccurrences) {
+            pendingOccurrences = pending
+        } else if recurrence != .none {
+            // Read old audit logs once, preserving which recurring periods are pending.
+            var latest: [Date: TaskRecord.Action] = [:]
+            for record in records {
+                if let date = record.occurrenceDate { latest[date] = record.action }
+            }
+            pendingOccurrences = latest.filter { $0.value == .reopened }.map(\.key)
+        }
+        // Retain completion snapshots, with at most one per task/recurring period.
+        var seen = Set<String>()
+        records = records.reversed().filter { record in
+            guard record.action == .completed else { return false }
+            let key = recurrence == .none ? "single" : record.occurrenceDate?.timeIntervalSince1970.description ?? "legacy"
+            return seen.insert(key).inserted
+        }.reversed()
     }
 }
 
 struct TaskRecord: Identifiable, Codable, Equatable {
-    enum Action: String, Codable { case completed, reopened }
+    enum Action: String, Codable { case completed, reopened } // reopened is decode-only legacy data.
     var id = UUID()
     let title: String
     let timestamp: Date
@@ -98,10 +118,13 @@ extension Calendar {
     private let file: URL
     private let now: () -> Date
     let calendar: Calendar
+    let journal: JournalStore
     private var loadFailed = false
     var canUndo: Bool { previous != nil }
+    var activeTasks: [TaskItem] { tasks.filter { $0.deletedAt == nil } }
+    var deletedTasks: [TaskItem] { tasks.filter { $0.deletedAt != nil }.sorted { $0.deletedAt! > $1.deletedAt! } }
     var pending: [TaskItem] {
-        tasks.filter { task in
+        activeTasks.filter { task in
             if task.recurrence == .none { return !task.completed }
             return occurrence(for: task, on: now(), carryOver: false).map { !$0.isCompleted } ?? false
         }
@@ -111,6 +134,7 @@ extension Calendar {
         self.file = file ?? Self.storageURL
         self.now = now
         self.calendar = calendar
+        journal = JournalStore(file: self.file.deletingLastPathComponent().appendingPathComponent("journal.json"), now: now, calendar: calendar)
         do {
             if FileManager.default.fileExists(atPath: self.file.path) {
                 tasks = try JSONDecoder().decode([TaskItem].self, from: Data(contentsOf: self.file))
@@ -124,7 +148,7 @@ extension Calendar {
     static var storageURL: URL {
         #if DEBUG
         // The QA app uses an isolated file and never touches the user's journal.
-        if let path = ProcessInfo.processInfo.environment["FLOWTASKS_DATA_FILE"] { return URL(fileURLWithPath: path) }
+        if let path = (ProcessInfo.processInfo.environment["NOTCHAGENDA_DATA_FILE"] ?? ProcessInfo.processInfo.environment["FLOWTASKS_DATA_FILE"]) { return URL(fileURLWithPath: path) }
         #endif
         #if os(iOS)
         let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.example.flowtasks") ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -140,10 +164,11 @@ extension Calendar {
     }
 
     func occurrences(on day: Date, scope: TaskScope, carryOver: Bool = false) -> [TaskOccurrence] {
-        tasks.filter { $0.scope == scope }.compactMap { occurrence(for: $0, on: day, carryOver: carryOver) }
+        activeTasks.filter { $0.scope == scope }.compactMap { occurrence(for: $0, on: day, carryOver: carryOver) }
     }
 
     func occurrence(for task: TaskItem, on day: Date, carryOver: Bool = false) -> TaskOccurrence? {
+        guard task.deletedAt == nil else { return nil }
         if task.scope == .anytime {
             return TaskOccurrence(task: task, date: nil, isCompleted: task.completed, completedAt: task.completedAt)
         }
@@ -173,7 +198,8 @@ extension Calendar {
         let latest = task.records.last { record in
             record.occurrenceDate.map { calendar.isDate($0, inSameDayAs: key) } ?? false
         }
-        let completed = latest?.action == .completed
+        let returnedToPending = task.pendingOccurrences.contains { calendar.isDate($0, inSameDayAs: key) }
+        let completed = latest?.action == .completed && !returnedToPending
         return TaskOccurrence(task: task, date: key, isCompleted: completed, completedAt: completed ? latest?.timestamp : nil)
     }
 
@@ -184,6 +210,18 @@ extension Calendar {
                 record.timestamp >= period.start && record.timestamp < period.end && (scope == nil || (record.scope ?? task.scope) == scope)
             }
         }.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    func pendingOccurrences(on date: Date, scope: TaskScope, carryOver: Bool = false) -> [TaskOccurrence] {
+        occurrences(on: date, scope: scope, carryOver: carryOver).filter { !$0.isCompleted }
+    }
+
+    func completedOccurrences(on date: Date, scope: TaskScope, carryOver: Bool = false) -> [TaskOccurrence] {
+        occurrences(on: date, scope: scope, carryOver: carryOver).filter(\.isCompleted)
+    }
+
+    @discardableResult func returnToPending(_ entry: TaskOccurrence) -> Bool {
+        setCompleted(entry.task, occurrenceDate: entry.date, completed: false)
     }
 
     @discardableResult func add(_ text: String, date: Date?, scope: TaskScope? = nil, recurrence: TaskRepeat = .none) -> Bool {
@@ -205,7 +243,7 @@ extension Calendar {
     }
 
     @discardableResult func setCompleted(_ task: TaskItem, occurrenceDate: Date?, completed: Bool) -> Bool {
-        guard let current = tasks.first(where: { $0.id == task.id }) else { return false }
+        guard let current = tasks.first(where: { $0.id == task.id }), current.deletedAt == nil else { return false }
         let occurrence: TaskOccurrence?
         if current.recurrence == .none {
             occurrence = TaskOccurrence(task: current, date: current.date, isCompleted: current.completed, completedAt: current.completedAt)
@@ -221,11 +259,24 @@ extension Calendar {
                 items[i].completed = completed
                 items[i].completedAt = completed ? timestamp : nil
             }
-            items[i].records.append(TaskRecord(title: current.title, timestamp: timestamp, action: completed ? .completed : .reopened, occurrenceDate: occurrence.date, scope: current.scope))
+            if current.recurrence != .none, let date = occurrence.date {
+                items[i].pendingOccurrences.removeAll { calendar.isDate($0, inSameDayAs: date) }
+                if !completed { items[i].pendingOccurrences.append(date) }
+            }
+            if completed {
+                let existing = items[i].records.first { record in
+                    current.recurrence == .none || record.occurrenceDate == occurrence.date
+                }
+                items[i].records.removeAll { record in
+                    current.recurrence == .none || record.occurrenceDate == occurrence.date
+                }
+                items[i].records.append(TaskRecord(id: existing?.id ?? UUID(), title: current.title, timestamp: timestamp, action: .completed, occurrenceDate: occurrence.date, scope: current.scope))
+            }
         }
     }
 
     func later(_ task: TaskItem) {
+        guard activeTasks.contains(where: { $0.id == task.id }) else { return }
         change { items in
             guard let i = items.firstIndex(where: { $0.id == task.id }) else { return }
             items.append(items.remove(at: i))
@@ -239,7 +290,7 @@ extension Calendar {
     @discardableResult func updatePlan(_ task: TaskItem, scope: TaskScope, date: Date?, recurrence: TaskRepeat) -> Bool {
         guard scope.repeats.contains(recurrence) else { return false }
         // A recurring series has historical occurrence keys. Change its end, not its anchor.
-        guard let current = tasks.first(where: { $0.id == task.id }), current.recurrence == .none else { return false }
+        guard let current = tasks.first(where: { $0.id == task.id }), current.deletedAt == nil, current.recurrence == .none else { return false }
         return change { items in
             guard let i = items.firstIndex(where: { $0.id == task.id }) else { return }
             items[i].scope = scope
@@ -250,12 +301,22 @@ extension Calendar {
     }
 
     func stopRepeating(_ task: TaskItem) {
-        guard task.recurrence != .none else { return }
+        guard task.recurrence != .none, activeTasks.contains(where: { $0.id == task.id }) else { return }
         change { items in
             if let i = items.firstIndex(where: { $0.id == task.id }) {
                 items[i].repeatEnd = interval(for: now(), scope: task.scope).start
             }
         }
+    }
+
+    @discardableResult func delete(_ task: TaskItem) -> Bool {
+        guard let index = tasks.firstIndex(where: { $0.id == task.id && $0.deletedAt == nil }) else { return false }
+        return change { $0[index].deletedAt = now() }
+    }
+
+    @discardableResult func restore(_ task: TaskItem) -> Bool {
+        guard let index = tasks.firstIndex(where: { $0.id == task.id && $0.deletedAt != nil }) else { return false }
+        return change { $0[index].deletedAt = nil }
     }
 
     func undo() {
