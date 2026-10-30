@@ -29,6 +29,8 @@ cd notchagenda
 
 ## 文件
 
+- [Privacy Policy / 私隱政策](https://cold-ay.github.io/notchagenda/privacy.html)：本機資料、保存／刪除及支援方式。
+
 - [使用指南](docs/USER_GUIDE.md)：操作流程、hover、完成／刪除、日記、資料位置、備份還原與疑難排解。
 - [開發指南](docs/DEVELOPMENT.md)：架構、功能與檔案對照、資料格式、hover 狀態機、測試，以及如何擴充各功能。
 

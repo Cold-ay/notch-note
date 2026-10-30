@@ -20,7 +20,7 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .traditionalChinese: return key
         case .simplifiedChinese:
-            let overrides = ["設定": "设置", "設定…": "设置…", "儲存日記": "保存日记", "儲存安排": "保存安排", "復原上次儲存": "撤销上次保存"]
+            let overrides = ["私隱政策": "隐私政策", "設定": "设置", "設定…": "设置…", "儲存日記": "保存日记", "儲存安排": "保存安排", "復原上次儲存": "撤销上次保存"]
             if let value = overrides[key] { return value }
             if let prefix = EnglishStrings.errorPrefixes.first(where: { key.hasPrefix($0) }) {
                 return (prefix.applyingTransform(StringTransform("Traditional-Simplified"), reverse: false) ?? prefix) + key.dropFirst(prefix.count)

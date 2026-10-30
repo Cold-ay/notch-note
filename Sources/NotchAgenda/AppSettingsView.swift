@@ -86,6 +86,10 @@ struct AppSettingsView: View {
                         }
                     }
                     Text(preferences.text("外表與內頁可自由配搭，即時套用並自動保存。")).font(.system(size: 11)).foregroundStyle(paper.faint)
+                    Divider()
+                    Link(destination: URL(string: "https://cold-ay.github.io/notchagenda/privacy.html")!) {
+                        Label(preferences.text("私隱政策"), systemImage: "hand.raised")
+                    }.font(.system(size: 12)).accessibilityIdentifier("settings.privacyPolicy")
                     if let error = preferences.errorMessage { Text(preferences.text(error)).font(.caption).foregroundStyle(.red) }
                 }.padding(.horizontal, 2).padding(.bottom, 12)
             }

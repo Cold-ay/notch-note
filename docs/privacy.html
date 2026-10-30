@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="NotchAgenda privacy policy: local tasks, journals, preferences, retention, deletion and support.">
+  <meta name="color-scheme" content="light">
+  <title>Privacy Policy · NotchAgenda</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #30362f; background: #f8f5ec; line-height: 1.75; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 790px; margin: 0 auto; padding: 48px 24px 72px; }
+    a { color: #75503a; text-underline-offset: 4px; overflow-wrap: anywhere; }
+    a:focus-visible { outline: 3px solid #75503a; outline-offset: 4px; }
+    .brand { font-size: .8rem; letter-spacing: .16em; font-weight: 650; text-decoration: none; }
+    h1, h2 { font-family: Georgia, "Times New Roman", serif; line-height: 1.25; }
+    h1 { font-size: clamp(2.4rem, 7vw, 3.5rem); margin: 24px 0 10px; }
+    h2 { font-size: 1.4rem; margin: 32px 0 12px; }
+    p, ul { margin: 12px 0; }
+    li { margin: 7px 0; }
+    .meta { color: #62685d; font-size: .95rem; }
+    .summary { margin: 28px 0; padding: 18px 22px; background: #e9ecdf; border-left: 3px solid #52634e; border-radius: 0 10px 10px 0; }
+    nav { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 24px 0; }
+    code { font-size: .9em; overflow-wrap: anywhere; }
+    section { scroll-margin-top: 24px; }
+    .translation { margin-top: 56px; padding-top: 24px; border-top: 1px solid #cdd0c1; }
+    footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #cdd0c1; font-size: .9rem; }
+    @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  </style>
+</head>
+<body>
+<main>
+  <a class="brand" href="./">NOTCHAGENDA</a>
+  <h1>Privacy Policy</h1>
+  <p class="meta">Effective date: <time datetime="2026-10-30">30 October 2026</time> · macOS, iOS and iPadOS</p>
+  <nav aria-label="Policy languages"><a href="#english" lang="en">English</a><a href="#traditional-chinese" lang="zh-Hant">繁體中文</a></nav>
+  <div class="summary">Your tasks and journal entries stay on your device. The current NotchAgenda app has no accounts, advertising, analytics SDKs or developer-operated cloud service.</div>
+  <section id="english" aria-label="English privacy policy">
+    <h2>1. Who provides NotchAgenda</h2>
+    <p>NotchAgenda is maintained by <a href="https://github.com/Cold-ay">Cold-ay</a>, the maintainer of the <a href="https://github.com/Cold-ay/notchagenda">NotchAgenda repository</a>. This policy describes the current app and this policy website.</p>
+    <h2>2. Information stored by the app</h2>
+    <p>The app stores information you enter or generate while using its features:</p>
+    <ul>
+      <li>Task and goal titles, scheduled dates, recurring schedules, completion status and completion records.</li>
+      <li>Journal entries, their dates and locally saved drafts.</li>
+      <li>Preferences such as language, notebook appearance, page style and Mac hover settings.</li>
+      <li>Local identifiers and timestamps needed to organise, save and restore these records.</li>
+    </ul>
+    <p>This information is used to provide the features you request. NotchAgenda does not upload your task or journal contents to the developer, and the developer cannot access them remotely through the app.</p>
+    <h2>3. Storage and sharing</h2>
+    <p>Records are saved locally as JSON files and operating-system preferences. The iOS/iPadOS app and its Widget use an App Group container so the Widget can display your tasks. This is sharing between components of the same app on your device, not sharing with another user.</p>
+    <p>The current app does not provide an account, friend sharing, an app-operated backend, or automatic syncing between your Mac and iPhone. It does not sell your data, use advertising SDKs or include app-integrated analytics or tracking.</p>
+    <p>Your device, operating system and backup settings may create additional copies, such as device backups or backups you make yourself. Apple processes its own services, distribution and any system diagnostics under <a href="https://www.apple.com/legal/privacy/">Apple's privacy policy</a> and your Apple settings.</p>
+    <h2>4. Retention and deletion</h2>
+    <p>Local records remain until you remove them or the associated app data. Moving a task to the in-app Trash is a recoverable deletion: the task and its history remain in the local data file. Clearing a journal entry removes the current saved text for that period; temporary undo or draft copies may remain during the app session.</p>
+    <ul>
+      <li><strong>Mac:</strong> quit NotchAgenda before removing its local data. For the standard development build, its data folder is <code>~/Library/Application Support/FlowTasks/</code>. A sandboxed build stores this folder inside its macOS app container. Removing <code>tasks.json</code>, <code>journal.json</code> and <code>preferences.json</code> removes the corresponding saved content. macOS may separately retain the app's system preferences, including the hover-enabled setting.</li>
+      <li><strong>iPhone/iPad:</strong> use the operating system's Delete App option to remove the app and its associated data. Offload App preserves data and is not the same as deletion.</li>
+      <li>Remove exported files and backup copies separately where applicable. Restoring a backup may restore older app data.</li>
+    </ul>
+    <p>There is no developer-hosted copy of your tasks or journal for us to delete. If you need help locating or removing local data, contact the maintainer using the link below.</p>
+    <h2>5. Security</h2>
+    <p>The app uses atomic file writes to reduce the chance of incomplete saves. Its local JSON files do not have an additional app-level encryption layer. Access also depends on your device security, app-container protections and backup settings. Avoid sharing the data files or backups with people who should not see their contents.</p>
+    <h2>6. This website and support</h2>
+    <p>This policy website is hosted on GitHub Pages. We do not add analytics scripts, advertising, forms or cookies to this page. GitHub may process visitors' IP addresses and request information to operate and secure its hosting service, as described in the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
+    <p>If you choose to contact us through GitHub Issues, your GitHub profile and any information you post are processed by GitHub and may be publicly visible. We use information you choose to provide to answer support requests and resolve issues. Do not post private journal text, task files, passwords or other sensitive information. Support posts are retained under GitHub's controls and can be managed through GitHub or a request to the maintainer.</p>
+    <h2>7. Changes and contact</h2>
+    <p>If the app adds cloud syncing, accounts, friend sharing, analytics or other data handling, this policy and the relevant app disclosures will be updated before those features are released. The effective date above identifies this version.</p>
+    <p>For privacy questions or help with your local data, <a href="https://github.com/Cold-ay/notchagenda/issues">contact the NotchAgenda maintainer through GitHub Issues</a>.</p>
+  </section>
+  <section id="traditional-chinese" class="translation" lang="zh-Hant" aria-label="繁體中文私隱政策">
+    <h1>私隱政策</h1>
+    <p class="meta">生效日期：2026 年 10 月 30 日 · 適用於 macOS、iOS 及 iPadOS</p>
+    <h2>1. 開發者</h2>
+    <p>NotchAgenda 由 <a href="https://github.com/Cold-ay">Cold-ay</a>（<a href="https://github.com/Cold-ay/notchagenda">NotchAgenda 專案</a>維護者）維護。本政策說明目前版本 App 及此政策網站如何處理資料。</p>
+    <h2>2. App 儲存哪些資料</h2>
+    <p>App 在你的裝置儲存你輸入或使用功能時產生的資料，包括：待辦與目標內容、安排日期、重複週期、完成狀態及紀錄；日記、日期與本機草稿；語言、外觀、內頁及 Mac hover 設定；以及整理、保存和還原資料所需的本機識別碼與時間。</p>
+    <p>這些資料只用於提供你操作的功能。NotchAgenda 不會把待辦或日記內容上傳給開發者，開發者亦不能透過 App 遠端讀取這些內容。</p>
+    <h2>3. 儲存與分享方式</h2>
+    <p>資料以本機 JSON 檔案及系統偏好設定保存。iOS／iPadOS App 與其 Widget 共用裝置內的 App Group 容器，以便 Widget 顯示待辦；這屬於同一 App 的元件之間共用資料，並非向其他用戶分享。</p>
+    <p>目前 App 沒有帳戶、好友分享、開發者營運的雲端後端或 Mac／iPhone 自動同步。App 不會出售你的資料，沒有廣告 SDK，也沒有內建分析或追蹤功能。</p>
+    <p>你的系統、備份設定或自行備份可能保留其他副本。Apple 的系統服務、App 分發及系統診斷由 <a href="https://www.apple.com/legal/privacy/">Apple 私隱政策</a>及你的 Apple 設定管理。</p>
+    <h2>4. 保存與刪除</h2>
+    <p>本機紀錄會保留至你移除相關內容或 App 資料。移到 App「垃圾桶」屬可還原刪除，待辦與歷史仍留在本機檔案。清空某一期日記會移除當期已保存文字；使用期間，復原或草稿機制可能暫時保留副本。</p>
+    <ul>
+      <li><strong>Mac：</strong>移除資料前先結束 App。一般開發版的資料夾為 <code>~/Library/Application Support/FlowTasks/</code>；沙盒版則位於 App 的 macOS 容器內。移除 <code>tasks.json</code>、<code>journal.json</code> 及 <code>preferences.json</code> 可移除對應的保存內容。macOS 可能另行保留系統偏好，例如是否啟用 hover。</li>
+      <li><strong>iPhone／iPad：</strong>使用系統「刪除 App」選項移除 App 及其相關資料。「卸載 App」會保留資料，不等同刪除。</li>
+      <li>請另外管理匯出檔案與備份。還原備份可能令舊資料再次出現。</li>
+    </ul>
+    <p>開發者沒有保存你的待辦或日記伺服器副本。如需尋找或移除本機資料的協助，可使用下方聯絡方式。</p>
+    <h2>5. 資料安全</h2>
+    <p>App 使用原子寫入降低保存不完整的機會。本機 JSON 檔案沒有額外的 App 層加密；存取亦取決於裝置安全、App 容器及備份設定。請妥善保管資料檔與備份。</p>
+    <h2>6. 政策網站與支援</h2>
+    <p>本網站由 GitHub Pages 託管。我們沒有在此頁加入分析腳本、廣告、表格或 Cookie。GitHub 可能為提供及保護託管服務而處理訪客 IP 位址及請求資訊，詳見 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub 私隱聲明</a>。</p>
+    <p>如你自行透過 GitHub Issues 聯絡我們，你的 GitHub 個人檔案與張貼內容由 GitHub 處理，並可能公開顯示。我們會使用你主動提供的資料回覆支援及處理問題。請勿公開私人日記、待辦資料檔、密碼或其他敏感內容。支援貼文由 GitHub 的相關控制管理；可使用 GitHub 功能或聯絡維護者處理。</p>
+    <h2>7. 更新與聯絡</h2>
+    <p>如日後推出雲端同步、帳戶、好友分享、分析或其他資料處理功能，會在發佈前更新政策及相關 App 聲明。頁首日期標示本政策版本。</p>
+    <p>私隱問題或本機資料處理協助，請透過 <a href="https://github.com/Cold-ay/notchagenda/issues">GitHub Issues 聯絡 NotchAgenda 維護者</a>。</p>
+  </section>
+  <footer><a href="./">NotchAgenda</a> · <a href="https://github.com/Cold-ay/notchagenda/issues">Support / 支援</a></footer>
+</main>
+</body>
+</html>
